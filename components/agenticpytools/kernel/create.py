@@ -3,7 +3,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from agenticpytools.environment import is_windows, venv_python
+from agenticpytools.environment import venv_python
 from agenticpytools.kernel.core import (
     get_connection_file_path,
     get_kernel_name,

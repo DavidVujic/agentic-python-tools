@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from agenticpytools.kernel import capture, client
 from fastmcp import FastMCP
@@ -8,24 +9,35 @@ mcp = FastMCP("My MCP Server")
 TIMEOUT = 30
 
 
+def return_data(
+    stdout: list | None = None,
+    stderr: list | None = None,
+    result: dict | None = None,
+    error: str | None = None,
+) -> dict[str, Any | None]:
+    return {"stdout": stdout, "stderr": stderr, "result": result, "error": error}
+
+
 @mcp.tool
-def run(data: str, project_full_path: str) -> dict:
+def run(data: str, project_full_path: str) -> dict[str, Any | None]:
     """Execute code in the kernel and return the output.
 
-    Output format
+    Returns a dictionary
     stdout: from standard output
     stderr: from standard error
     result: from code evaluation
     error: any caught errors during evaluation
     """
-    project = Path(project_full_path).expanduser().resolve()
-
-    kc = client.create(project, TIMEOUT)
+    kc = client.create(project_full_path, TIMEOUT)
 
     msg_id = kc.execute(data)
-    stdout, stderr, result, error = capture(kc, msg_id, TIMEOUT)
 
-    return {"stdout": stdout, "stderr": stderr, "result": result, "error": error}
+    try:
+        stdout, stderr, result, error = capture(kc, msg_id, TIMEOUT)
+    except TimeoutError:
+        return return_data(error="Timeout: try again.")
+
+    return return_data(stdout, stderr, result, error)
 
 
 @mcp.tool
@@ -33,7 +45,7 @@ def close(project_full_path: str) -> None:
     """Close the kernel."""
     project = Path(project_full_path).expanduser().resolve()
 
-    client.close(project, TIMEOUT)
+    client.close(project)
 
 
 if __name__ == "__main__":

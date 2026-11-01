@@ -48,11 +48,14 @@ Agent config during dev:
 
 """
 
+
 def run():
     return core.run(data, project_full_path)
 
+
 def list():
     return storage.list_entries()
+
 
 def close():
     return core.close(project_full_path)

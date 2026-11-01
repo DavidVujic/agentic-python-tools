@@ -1,5 +1,5 @@
 [project]
-name = "Agentic Python Tools"
+name = "agentic_python_tools"
 version = "0.0.1"
 description = "Python Tools for Agentic Engineering"
 readme = "README.md"
