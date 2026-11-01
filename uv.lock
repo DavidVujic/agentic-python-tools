@@ -6,6 +6,27 @@ resolution-markers = [
     "python_full_version < '3.14'",
 ]
 
+[manifest]
+members = [
+    "agent-repl-mcp",
+    "agentic-python-tools",
+]
+
+[[package]]
+name = "agent-repl-mcp"
+version = "0.0.1"
+source = { editable = "projects/agent-repl-mcp" }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "ipykernel" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastmcp" },
+    { name = "ipykernel" },
+]
+
 [[package]]
 name = "agentic-python-tools"
 version = "0.0.1"

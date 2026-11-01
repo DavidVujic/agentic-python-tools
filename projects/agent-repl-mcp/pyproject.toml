@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling", "hatch-polylith-bricks"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-repl-mcp"
+version = "0.0.1"
+authors = [
+    { name = "David Vujic" }
+]
+requires-python = ">=3.12"
+dependencies = ["fastmcp", "ipykernel"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agenticpytools"]
+
+[tool.hatch.build.hooks.polylith-bricks]
+
+[tool.polylith.bricks]
+"../../bases/agenticpytools/repl_mcp" = "agenticpytools/repl_mcp"
+"../../components/agenticpytools/environment" = "agenticpytools/environment"
+"../../components/agenticpytools/kernel" = "agenticpytools/kernel"
+"../../components/agenticpytools/storage" = "agenticpytools/storage"

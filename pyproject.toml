@@ -21,6 +21,9 @@ dev = [
     "ty>=0.0.86",
 ]
 
+[tool.uv.workspace]
+members = ["projects/*"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
@@ -35,7 +38,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.polylith.bricks]
-"bases/agentic_python_tools/repl_mcp" = "agentic_python_tools/repl_mcp"
-"components/agentic_python_tools/environment" = "agentic_python_tools/environment"
-"components/agentic_python_tools/kernel" = "agentic_python_tools/kernel"
-"components/agentic_python_tools/storage" = "agentic_python_tools/storage"
+"bases/agenticpytools/repl_mcp" = "agenticpytools/repl_mcp"
+"components/agenticpytools/environment" = "agenticpytools/environment"
+"components/agenticpytools/kernel" = "agenticpytools/kernel"
+"components/agenticpytools/storage" = "agenticpytools/storage"
