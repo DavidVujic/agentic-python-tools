@@ -15,9 +15,12 @@ readme = "README.md"
 dependencies = ["fastmcp", "ipykernel"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["agenticpytools"]
+packages = ["agent_repl_mcp"]
 
 [tool.hatch.build.hooks.polylith-bricks]
+
+[tool.polylith.build]
+top-namespace = "agent_repl_mcp"
 
 [tool.polylith.bricks]
 "../../bases/agenticpytools/repl_mcp" = "agenticpytools/repl_mcp"
