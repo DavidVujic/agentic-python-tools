@@ -78,3 +78,7 @@ def close(project_full_path: str) -> None:
 
     # then shut the kernel down via the standalone path (as you already have)
     shutdown_adopted(stored["connection_file"])
+
+
+if __name__ == "__main__":
+    mcp.run()
