@@ -23,7 +23,7 @@ def run(data: str, project_full_path: str) -> dict:
     kc = client.create(project, TIMEOUT)
 
     msg_id = kc.execute(data)
-    stdout, stderr, result, error = capture(kc, msg_id)
+    stdout, stderr, result, error = capture(kc, msg_id, TIMEOUT)
 
     return {"stdout": stdout, "stderr": stderr, "result": result, "error": error}
 
@@ -33,7 +33,7 @@ def close(project_full_path: str) -> None:
     """Close the kernel."""
     project = Path(project_full_path).expanduser().resolve()
 
-    client.close(project)
+    client.close(project, TIMEOUT)
 
 
 if __name__ == "__main__":

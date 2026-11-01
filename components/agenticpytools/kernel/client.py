@@ -15,7 +15,7 @@ def create(project: Path, timeout: int) -> BlockingKernelClient:
 
     stored = storage.load_entry(kernel_name)
 
-    freshly_started = not (stored and is_running_stored(stored))
+    freshly_started = not (stored and is_running_stored(stored, timeout))
 
     if freshly_started:
         if stored and not is_running_stored(stored, timeout):

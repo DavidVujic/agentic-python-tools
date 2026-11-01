@@ -1,11 +1,10 @@
+import json
 import time
 from pathlib import Path
 
 from agenticpytools.environment import is_windows
-from jupyter_core.paths import jupyter_runtime_dir
 from jupyter_client import BlockingKernelClient
-import json
-
+from jupyter_core.paths import jupyter_runtime_dir
 
 
 def get_kernel_name(project_name: str) -> str:
@@ -38,7 +37,7 @@ def in_runtime_dir(connection_file: str) -> bool:
     return cf.parent == rt
 
 
-def is_running_stored(stored: dict, timeout: int = 30) -> bool:
+def is_running_stored(stored: dict, timeout: int) -> bool:
     """Probe a kernel described by persisted state (connection file path)."""
     connection_file = stored["connection_file"]
     if not in_runtime_dir(connection_file):
@@ -65,4 +64,3 @@ def is_running_stored(stored: dict, timeout: int = 30) -> bool:
         return False
     finally:
         kc.stop_channels()
-

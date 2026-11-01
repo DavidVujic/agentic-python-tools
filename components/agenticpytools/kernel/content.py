@@ -7,7 +7,7 @@ from jupyter_client import BlockingKernelClient
 def capture(
     kc: BlockingKernelClient,
     msg_id: Any,
-    timeout: int = 30,
+    timeout: int,
 ) -> tuple[list, list, dict[str, Any] | None, str | None]:
     """Capture the stdout, stderr, result and error."""
     stdout, stderr, result, error = [], [], None, None
