@@ -9,6 +9,9 @@ authors = [
     { name = "David Vujic" }
 ]
 requires-python = ">=3.12"
+repository = "https://github.com/DavidVujic/agentic-python-tools"
+license = "MIT"
+readme = "README.md"
 dependencies = ["fastmcp", "ipykernel"]
 
 [tool.hatch.build.targets.wheel]
