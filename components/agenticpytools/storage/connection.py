@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from agentic_python_tools.storage.schema import PROJECT_KERNEL_SCHEMA
+from agenticpytools.storage.schema import PROJECT_KERNEL_SCHEMA
 
 DB_PATH = Path.home() / ".python-repl-mcp" / "kernels.db"
 

@@ -1,5 +1,5 @@
 import pytest
-from agentic_python_tools.repl_mcp.core import mcp
+from agenticpytools.repl_mcp.core import mcp
 from fastmcp.client import Client
 from fastmcp.client.transports import FastMCPTransport
 

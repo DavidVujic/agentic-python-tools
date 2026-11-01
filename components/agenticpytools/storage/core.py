@@ -1,6 +1,6 @@
 """Sqlite-backed kernel registry."""
 
-from agentic_python_tools.storage.connection import get_conn
+from agenticpytools.storage.connection import get_conn
 
 
 def load_entry(kernel_name: str) -> dict | None:

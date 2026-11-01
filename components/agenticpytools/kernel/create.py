@@ -3,8 +3,8 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from agentic_python_tools.environment import is_windows, venv_python
-from agentic_python_tools.kernel.core import (
+from agenticpytools.environment import is_windows, venv_python
+from agenticpytools.kernel.core import (
     get_connection_file_path,
     get_kernel_name,
     get_transport,

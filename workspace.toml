@@ -1,5 +1,5 @@
 [tool.polylith]
-namespace = "agentic_python_tools"
+namespace = "agenticpytools"
 git_tag_pattern = "stable-*"
 
 [tool.polylith.structure]

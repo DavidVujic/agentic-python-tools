@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from agentic_python_tools import storage
-from agentic_python_tools.repl_mcp import core
+from agenticpytools import storage
+from agenticpytools.repl_mcp import core
 
 project_full_path = (Path.cwd().parent / "python-hiccup").as_posix()
 project_name = "python-repl-mcp"
@@ -34,6 +34,18 @@ ls /Users/$(whoami)/Library/Jupyter/runtime/
 Cleanup kernel storage
 rm /Users/$(whoami)/Library/Jupyter/runtime/*.json
 rm /Users/$(whoami)/Library/Jupyter/runtime/kernel-*-ipc-*
+
+
+Agent config during dev:
+{
+  "mcpServers": {
+    "python-repl-mcp": {
+      "command": "python",
+      "args": ["/Users/$(whoami)/github/agentic-python-tools/bases/agenticpytools/repl_mcp/core.py"]
+    }
+  }
+}
+
 """
 
 def run():

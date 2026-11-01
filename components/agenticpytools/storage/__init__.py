@@ -1,4 +1,4 @@
-from agentic_python_tools.storage.core import (
+from agenticpytools.storage.core import (
     delete_entry,
     list_entries,
     load_entry,

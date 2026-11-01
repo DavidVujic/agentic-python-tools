@@ -1,7 +1,7 @@
 import time
 from pathlib import Path
 
-from agentic_python_tools.environment import is_windows
+from agenticpytools.environment import is_windows
 from jupyter_core.paths import jupyter_runtime_dir
 from jupyter_client import BlockingKernelClient
 import json
