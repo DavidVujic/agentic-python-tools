@@ -20,45 +20,28 @@ def create(path: str, timeout: int) -> BlockingKernelClient:
             kc.start_channels()
             kc.wait_for_ready(timeout=timeout)
 
-            return kc
+            if kc.is_alive():
+                return kc
+            else:
+                shutdown_adopted(stored["connection_file"])
+                storage.delete_entry(kernel_name)
         except (FileNotFoundError, RuntimeError):
             shutdown_adopted(stored["connection_file"])
             storage.delete_entry(kernel_name)
 
     km = create_and_start_kernel(project)
     kc = km.client()
+    kc.start_channels()
+    kc.wait_for_ready(timeout=timeout)
+
+    if not kc.is_alive():
+        shutdown_adopted(str(km.connection_file))
+
+        raise RuntimeError("Failed to create or connect to kernel.")
 
     storage.save_entry(kernel_name, str(km.connection_file), path)
 
     return kc
-
-
-"""
-
-    if stored and not is_running_stored(stored, timeout):
-        shutdown_adopted(stored["connection_file"])
-        storage.delete_entry(kernel_name)
-        stored = None
-
-    if not stored:
-        km = create_and_start_kernel(project)
-        kc = km.client()
-        storage.save_entry(kernel_name, str(km.connection_file), path)
-
-        return kc
-
-    try:
-        kc = BlockingKernelClient()
-        kc.load_connection_file(stored["connection_file"])
-        kc.start_channels()
-        kc.wait_for_ready(timeout=timeout)
-    except (FileNotFoundError, RuntimeError) as e:
-        storage.delete_entry(kernel_name)
-        kc.stop_channels()
-        raise RuntimeError(f"Failed to connect: {e}")
-
-    return kc
-"""
 
 
 def close(project: Path) -> None:
