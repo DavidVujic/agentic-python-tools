@@ -1,0 +1,38 @@
+[project]
+name = "agentic_python_tools"
+version = "0.1.0"
+description = "Python Tools for Agentic Engineering"
+readme = "README.md"
+authors = [
+    { name = "David Vujic" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=4.0.5",
+    "ipykernel>=7.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "polylith-cli>=1.50.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.0",
+    "ty>=0.0.86",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.hatch.build]
+dev-mode-dirs = ["components", "bases", "development", "."]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.polylith.bricks]
+"bases/agentic_python_tools/repl_mcp" = "agentic_python_tools/repl_mcp"
+"components/agentic_python_tools/environment" = "agentic_python_tools/environment"
+"components/agentic_python_tools/kernel" = "agentic_python_tools/kernel"
+"components/agentic_python_tools/storage" = "agentic_python_tools/storage"

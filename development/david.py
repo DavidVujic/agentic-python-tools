@@ -1,0 +1,46 @@
+from pathlib import Path
+
+from agentic_python_tools import storage
+from agentic_python_tools.repl_mcp import core
+
+project_full_path = (Path.cwd().parent / "python-hiccup").as_posix()
+project_name = "python-repl-mcp"
+
+
+data = """
+x = 3
+y = 4
+from python_hiccup.html import raw, render
+
+def helloworld():
+    print(render(['div', 'helloworld']))
+    return x + y
+
+helloworld()
+"""
+
+"""
+shell commands
+
+Current running kernels
+ps aux | grep "[i]pykernel"
+
+Kill all running kernels
+pkill -f ipykernel
+
+List kernel storage
+ls /Users/$(whoami)/Library/Jupyter/runtime/
+
+Cleanup kernel storage
+rm /Users/$(whoami)/Library/Jupyter/runtime/*.json
+rm /Users/$(whoami)/Library/Jupyter/runtime/kernel-*-ipc-*
+"""
+
+def run():
+    return core.run(data, project_full_path)
+
+def list():
+    return storage.list_entries()
+
+def close():
+    return core.close(project_full_path)
