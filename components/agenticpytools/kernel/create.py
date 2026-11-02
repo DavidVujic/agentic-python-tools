@@ -24,8 +24,15 @@ def create_kernel_manager(
     )
 
 
+def installed_argv(ksm: KernelSpecManager, kernel_name: str) -> list[str] | None:
+    """Return the argv of the installed kernelspec, or None if not installed."""
+    installed = ksm.get_all_specs().get(kernel_name, {})
+
+    return installed.get("spec", {}).get("argv")
+
+
 def ensure_project_spec(kernel_name: str, current_python: str) -> None:
-    """Install a kernelspec pointing at the project's venv, if missing."""
+    """Install a kernelspec pointing at the project's venv, unless it already does."""
     argv = [
         current_python,
         "-m",
@@ -36,7 +43,7 @@ def ensure_project_spec(kernel_name: str, current_python: str) -> None:
 
     ksm = KernelSpecManager()
 
-    if kernel_name in ksm.get_all_specs():
+    if installed_argv(ksm, kernel_name) == argv:
         return
 
     with tempfile.TemporaryDirectory() as tmp:
