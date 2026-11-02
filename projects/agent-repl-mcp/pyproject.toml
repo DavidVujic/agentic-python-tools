@@ -4,20 +4,20 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-repl-mcp"
-version = "0.0.2"
-authors = [
-    { name = "David Vujic" }
-]
-requires-python = ">=3.12"
+version = "0.0.3"
+description = "A Python REPL that agents can use during development"
+authors = [{ name = "David Vujic" }]
 repository = "https://github.com/DavidVujic/agentic-python-tools"
 license = "MIT"
 readme = "README.md"
+
+requires-python = ">=3.12"
 dependencies = ["fastmcp", "ipykernel"]
+
+[tool.hatch.build.hooks.polylith-bricks]
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent_repl_mcp"]
-
-[tool.hatch.build.hooks.polylith-bricks]
 
 [tool.polylith.build]
 top-namespace = "agent_repl_mcp"
