@@ -9,7 +9,7 @@ from jupyter_client import BlockingKernelClient
 
 def create(path: str, timeout: int) -> BlockingKernelClient:
     project = Path(path).expanduser().resolve()
-    kernel_name = get_kernel_name(project.name)
+    kernel_name = get_kernel_name(project)
 
     stored = storage.load_entry(kernel_name)
 
@@ -45,7 +45,7 @@ def create(path: str, timeout: int) -> BlockingKernelClient:
 
 
 def close(project: Path) -> None:
-    kernel_name = get_kernel_name(project.name)
+    kernel_name = get_kernel_name(project)
 
     stored = storage.load_entry(kernel_name)
 

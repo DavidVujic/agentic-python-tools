@@ -51,7 +51,7 @@ def ensure_project_spec(kernel_name: str, current_python: str) -> None:
 
 
 def create_and_start_kernel(project: Path) -> KernelManager:
-    kernel_name = get_kernel_name(project.name)
+    kernel_name = get_kernel_name(project)
     current_python = str(venv_python(project))
 
     ensure_project_spec(kernel_name, current_python)
