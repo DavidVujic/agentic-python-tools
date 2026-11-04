@@ -30,14 +30,17 @@ def run(data: str, project_full_path: str) -> dict[str, Any | None]:
     """
     kc = client.create(project_full_path, TIMEOUT)
 
-    msg_id = kc.execute(data)
-
     try:
-        stdout, stderr, result, error = capture(kc, msg_id, TIMEOUT)
-    except TimeoutError:
-        return return_data(error="Timeout: try again.")
+        msg_id = kc.execute(data)
 
-    return return_data(stdout, stderr, result, error)
+        try:
+            stdout, stderr, result, error = capture(kc, msg_id, TIMEOUT)
+        except TimeoutError:
+            return return_data(error="Timeout: try again.")
+
+        return return_data(stdout, stderr, result, error)
+    finally:
+        kc.stop_channels()
 
 
 @mcp.tool
