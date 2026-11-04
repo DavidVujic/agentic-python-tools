@@ -71,6 +71,10 @@ def create_and_start_kernel(project: Path) -> KernelManager:
         kernel_name=kernel_name, connection_file=connection_file, transport=transport
     )
 
-    km.start_kernel()
+    try:
+        km.start_kernel()
+    except Exception:
+        km.shutdown_kernel(now=True)
+        raise
 
     return km
