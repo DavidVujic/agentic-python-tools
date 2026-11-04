@@ -41,9 +41,11 @@ def create(path: str, timeout: int) -> BlockingKernelClient:
             if kc.is_alive():
                 return kc
             else:
+                kc.stop_channels()
                 shutdown_adopted(stored["connection_file"])
                 storage.delete_entry(kernel_name)
         except (FileNotFoundError, RuntimeError):
+            kc.stop_channels()
             shutdown_adopted(stored["connection_file"])
             storage.delete_entry(kernel_name)
 
