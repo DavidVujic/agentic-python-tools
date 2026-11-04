@@ -7,6 +7,24 @@ from agenticpytools.kernel.create import create_and_start_kernel
 from jupyter_client import BlockingKernelClient
 
 
+def _connect_new_kernel(project: Path, timeout: int) -> BlockingKernelClient:
+    km = create_and_start_kernel(project)
+    kc = km.client()
+
+    try:
+        kc.start_channels()
+        kc.wait_for_ready(timeout=timeout)
+
+        if not kc.is_alive():
+            raise RuntimeError("Failed to create or connect to kernel.")
+    except Exception:
+        kc.stop_channels()
+        km.shutdown_kernel(now=True)
+        raise
+
+    return kc
+
+
 def create(path: str, timeout: int) -> BlockingKernelClient:
     project = Path(path).expanduser().resolve()
     kernel_name = get_kernel_name(project)
@@ -29,17 +47,8 @@ def create(path: str, timeout: int) -> BlockingKernelClient:
             shutdown_adopted(stored["connection_file"])
             storage.delete_entry(kernel_name)
 
-    km = create_and_start_kernel(project)
-    kc = km.client()
-    kc.start_channels()
-    kc.wait_for_ready(timeout=timeout)
-
-    if not kc.is_alive():
-        shutdown_adopted(str(km.connection_file))
-
-        raise RuntimeError("Failed to create or connect to kernel.")
-
-    storage.save_entry(kernel_name, str(km.connection_file), path)
+    kc = _connect_new_kernel(project, timeout)
+    storage.save_entry(kernel_name, str(kc.connection_file), path)
 
     return kc
 
