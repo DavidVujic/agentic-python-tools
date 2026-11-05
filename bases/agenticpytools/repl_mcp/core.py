@@ -2,9 +2,10 @@ from pathlib import Path
 from typing import Any
 
 from agenticpytools.kernel import capture, client
+from agenticpytools.repl_mcp.instructions import summary
 from fastmcp import FastMCP
 
-mcp = FastMCP("My MCP Server")
+mcp = FastMCP(name="agent-repl-mcp", instructions=summary)
 
 TIMEOUT = 30
 
