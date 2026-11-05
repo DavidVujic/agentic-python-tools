@@ -72,7 +72,7 @@ def create_and_start_kernel(project: Path) -> KernelManager:
     )
 
     try:
-        km.start_kernel()
+        km.start_kernel(cwd=str(project))
     except Exception:
         km.shutdown_kernel(now=True)
         raise
