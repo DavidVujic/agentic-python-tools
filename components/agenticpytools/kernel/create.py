@@ -3,7 +3,7 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from agenticpytools.environment import venv_python
+from agenticpytools.environment import is_uv, venv_python
 from agenticpytools.kernel.core import (
     get_connection_file_path,
     get_kernel_name,
@@ -31,16 +31,8 @@ def installed_argv(ksm: KernelSpecManager, kernel_name: str) -> list[str] | None
     return installed.get("spec", {}).get("argv")
 
 
-def ensure_project_spec(kernel_name: str, current_python: str) -> None:
+def ensure_project_spec(kernel_name: str, argv: list[str]) -> None:
     """Install a kernelspec pointing at the project's venv, unless it already does."""
-    argv = [
-        current_python,
-        "-m",
-        "ipykernel_launcher",
-        "-f",
-        "{connection_file}",
-    ]
-
     ksm = KernelSpecManager()
 
     if installed_argv(ksm, kernel_name) == argv:
@@ -57,15 +49,32 @@ def ensure_project_spec(kernel_name: str, current_python: str) -> None:
         ksm.install_kernel_spec(str(spec_dir), kernel_name=kernel_name, user=True)
 
 
+def kernel_argv(project: Path) -> list[str]:
+    """Kernel argv, based on what's used in the project."""
+    basics = ["-m", "ipykernel_launcher", "-f", "{connection_file}"]
+
+    if is_uv(project):
+        return [
+            "uv",
+            "run",
+            "--project",
+            str(project),
+            "--with",
+            "ipykernel",
+            "python",
+        ] + basics
+
+    return [str(venv_python(project))] + basics
+
+
 def create_and_start_kernel(project: Path) -> KernelManager:
     kernel_name = get_kernel_name(project)
-    current_python = str(venv_python(project))
 
-    ensure_project_spec(kernel_name, current_python)
+    ensure_project_spec(kernel_name, kernel_argv(project))
     transport = get_transport()
 
     kernel_id = str(uuid.uuid4())
-    connection_file = str(get_connection_file_path(kernel_id))  # ← back!
+    connection_file = str(get_connection_file_path(kernel_id))
 
     km = KernelManager(
         kernel_name=kernel_name, connection_file=connection_file, transport=transport
