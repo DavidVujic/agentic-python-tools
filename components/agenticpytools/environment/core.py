@@ -1,4 +1,5 @@
 import os
+import shutil
 from pathlib import Path
 
 
@@ -27,3 +28,10 @@ def venv_python(project_path: str | Path) -> Path:
             return exe
 
     raise FileNotFoundError(f"No virtual environment found in {project}")
+
+
+def is_uv(project: Path) -> bool:
+    has_uv = shutil.which("uv") is not None
+    lock_file = project / "uv.lock"
+
+    return has_uv and lock_file.exists()
