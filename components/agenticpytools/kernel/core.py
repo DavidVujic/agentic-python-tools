@@ -1,7 +1,7 @@
 import hashlib
 from pathlib import Path
 
-from agenticpytools.environment import is_windows
+from agenticpytools.environment import is_uv, is_windows, venv_python
 from jupyter_core.paths import jupyter_runtime_dir
 
 
@@ -26,3 +26,21 @@ def spec_data(argv: list[str], kernel_name: str) -> dict:
         "display_name": f"Python REPL ({kernel_name})",
         "language": "python",
     }
+
+
+def kernel_argv(project: Path) -> list[str]:
+    """Kernel argv, based on what's used in the project."""
+    basics = ["-m", "ipykernel_launcher", "-f", "{connection_file}"]
+
+    if is_uv(project):
+        return [
+            "uv",
+            "run",
+            "--project",
+            str(project),
+            "--with",
+            "ipykernel",
+            "python",
+        ] + basics
+
+    return [str(venv_python(project))] + basics
