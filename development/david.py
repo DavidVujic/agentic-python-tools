@@ -46,6 +46,12 @@ Agent config during dev:
   }
 }
 
+
+Check the DB:
+sqlite3 "$HOME/.python-repl-mcp/kernels.db" 'SELECT count(*) FROM kernels;'
+
+Clear the DB:
+sqlite3 "$HOME/.python-repl-mcp/kernels.db" 'DELETE FROM kernels;'
 """
 
 
