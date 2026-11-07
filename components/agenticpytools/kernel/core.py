@@ -1,7 +1,8 @@
 import hashlib
+import importlib.metadata
 from pathlib import Path
 
-from agenticpytools.environment import is_uv, is_windows, venv_python
+from agenticpytools.environment import is_uv, is_windows, venv_dir, venv_python
 from jupyter_core.paths import jupyter_runtime_dir
 
 
@@ -28,6 +29,28 @@ def spec_data(argv: list[str], kernel_name: str) -> dict:
     }
 
 
+def venv_has_ipykernel(project: Path) -> bool:
+    """Check the project venv's site-packages for an ipykernel distribution."""
+    venv = venv_dir(project)
+
+    if not venv.is_dir():
+        return False
+
+    lib = next((d for d in venv.iterdir() if d.name.lower() == "lib"), None)
+
+    if lib is None:
+        return False
+
+    site_packages = [*lib.glob("*/site-packages"), lib / "site-packages"]
+
+    return any(
+        (dist.metadata["Name"] or "").lower() == "ipykernel"
+        for sp in site_packages
+        if sp.is_dir()
+        for dist in importlib.metadata.distributions(path=[str(sp)])
+    )
+
+
 def kernel_argv(project: Path) -> list[str]:
     """Kernel argv, based on what's used in the project."""
     basics = ["-m", "ipykernel_launcher", "-f", "{connection_file}"]
@@ -42,5 +65,11 @@ def kernel_argv(project: Path) -> list[str]:
             "ipykernel",
             "python",
         ] + basics
+
+    if not venv_has_ipykernel(project):
+        raise RuntimeError(
+            f"ipykernel is not installed in the project venv at {venv_dir(project)}; "
+            "add it to the project dependencies"
+        )
 
     return [str(venv_python(project))] + basics
