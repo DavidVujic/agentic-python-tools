@@ -6,7 +6,7 @@ A repo containing tools for Agentic Engineering with Python.
 
 [![CodeScene Average Code Health](https://codescene.io/projects/87469/status-badges/average-code-health)](https://codescene.io/projects/87469)
 
-[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=DavidVujic_agentic-python-tools)](https://sonarcloud.io/summary/new_code?id=DavidVujic_agentic-python-tools)
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=DavidVujic_agentic-python-tools&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=DavidVujic_agentic-python-tools)
 
 ## Agent REPL MCP
 
