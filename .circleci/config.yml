@@ -69,6 +69,7 @@ jobs:
     docker:
       - image: << pipeline.parameters.python-image >>
     steps:
+      - setup
       - attach_workspace:
           at: artifacts
       - run:
