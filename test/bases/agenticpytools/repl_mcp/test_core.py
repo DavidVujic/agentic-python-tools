@@ -3,6 +3,8 @@ from agenticpytools.repl_mcp.core import mcp
 from fastmcp.client import Client
 from fastmcp.client.transports import FastMCPTransport
 
+pytestmark = pytest.mark.repl_mcp
+
 
 @pytest.fixture
 async def main_mcp_client():
