@@ -52,5 +52,9 @@ def close(project_full_path: str) -> None:
     client.close(project)
 
 
-if __name__ == "__main__":
+def main() -> None:
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

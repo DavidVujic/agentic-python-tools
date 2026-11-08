@@ -14,6 +14,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["fastmcp", "ipykernel"]
 
+[project.scripts]
+agent-repl-mcp = "agent_repl_mcp.agenticpytools.repl_mcp.core:main"
+
 [tool.hatch.build.hooks.polylith-bricks]
 
 [tool.hatch.build.targets.wheel]
