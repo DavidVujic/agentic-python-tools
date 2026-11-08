@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 
-# Build a wheel + requirements.txt per project changed since the latest stable-* tag.
-# Artifacts land in $ARTIFACTS_DIR (default: artifacts).
+# Build a wheel + requirements.txt per project changed since the latest tag.
+# Artifacts land in $ARTIFACTS_DIR (default: artifacts), plus manifest.txt listing them.
 
-# CI: used by the `build` job.
+# CI: used by the `build` job (manifest guarantees persist_to_workspace always has a root).
 # Optional - Locally: POLY_SINCE=v0.0.6 bash scripts/ci/build.sh
 
 set -euo pipefail
 
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-artifacts}"
+mkdir -p "$ARTIFACTS_DIR"
+manifest="$ARTIFACTS_DIR/manifest.txt"
+: > "$manifest"
 
 since_args=()
 if [ -n "${POLY_SINCE:-}" ]; then
@@ -21,10 +24,9 @@ if [ -z "$projects" ] || [ "$projects" = "No matching tags or commits found in r
   exit 0
 fi
 
-mkdir -p "$ARTIFACTS_DIR"
-
 for p in ${projects//,/ }; do
   echo "Building $p"
+  echo "$p" >> "$manifest"
   uv build --package "$p" --out-dir "$ARTIFACTS_DIR/$p"
   uv export --package "$p" --no-dev --no-emit-project --format requirements.txt -o "$ARTIFACTS_DIR/$p/requirements.txt"
   rm -f "$ARTIFACTS_DIR/$p/.gitignore"

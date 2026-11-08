@@ -16,6 +16,14 @@ if [ ! -d "$ARTIFACTS_DIR" ]; then
   exit 1
 fi
 
+shopt -s nullglob
+found=0
+for d in "$ARTIFACTS_DIR"/*/; do found=1; break; done
+if [ "$found" -eq 0 ]; then
+  echo "No built projects in $ARTIFACTS_DIR; nothing to deploy"
+  exit 0
+fi
+
 uv venv "$VENV_DIR" -q
 PY="$VENV_DIR/bin/python"
 
