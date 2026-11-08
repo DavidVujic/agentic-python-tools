@@ -1,3 +1,5 @@
+"""SQLite-backed registry of running kernels (connection file and project per kernel)."""
+
 from agenticpytools.storage.core import (
     delete_entry,
     list_entries,
