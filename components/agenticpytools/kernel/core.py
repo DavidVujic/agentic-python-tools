@@ -5,10 +5,12 @@ from pathlib import Path
 from agenticpytools.environment import is_uv, is_windows, venv_dir, venv_python
 from jupyter_core.paths import jupyter_runtime_dir
 
+KERNEL_NAME_PREFIX = "agenticpytools"
+
 
 def get_kernel_name(project: Path) -> str:
     digest = hashlib.sha256(str(project).encode("utf-8")).hexdigest()[:8]
-    return f"repl-{project.name}-{digest}"
+    return f"{KERNEL_NAME_PREFIX}-{project.name}-{digest}"
 
 
 def get_connection_file_path(kernel_id: str) -> Path:
