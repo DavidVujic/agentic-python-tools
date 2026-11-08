@@ -12,7 +12,7 @@ pytestmark = pytest.mark.kernel
 
 def test_get_kernel_name():
     project = Path("/x/myproj")
-    expected = "repl-myproj-" + hashlib.sha256(b"/x/myproj").hexdigest()[:8]
+    expected = "agenticpytools-myproj-" + hashlib.sha256(b"/x/myproj").hexdigest()[:8]
 
     assert core.get_kernel_name(project) == expected
     assert core.get_kernel_name(project) == expected
