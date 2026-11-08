@@ -1,4 +1,4 @@
-"""Project environment helpers: venv paths, interpreter lookup, uv detection, OS checks."""
+"""Project environment helpers: venv paths, interpreter lookup, tool detection, OS checks."""
 
 from agenticpytools.environment.core import is_uv, is_windows, venv_dir, venv_python
 
