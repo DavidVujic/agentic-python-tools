@@ -5,7 +5,7 @@ from agenticpytools.kernel import capture, client
 from agenticpytools.repl_mcp.instructions import summary
 from fastmcp import FastMCP
 
-mcp = FastMCP(name="agent-repl-mcp", instructions=summary)
+mcp = FastMCP(name="agent-python-repl-mcp", instructions=summary)
 
 TIMEOUT = 30
 
