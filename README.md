@@ -1,6 +1,6 @@
-# Agentic Python Tools
+# Python Tools for Agentic Engineering
 
-A repo containing Python tools for Agentic Engineering.
+A repo containing tools for Agentic Engineering with Python.
 
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/DavidVujic/agentic-python-tools/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/DavidVujic/agentic-python-tools/tree/main)
 
