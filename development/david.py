@@ -1,3 +1,4 @@
+import uuid
 from pathlib import Path
 
 from agenticpytools import storage
@@ -5,6 +6,7 @@ from agenticpytools.repl_mcp import core
 
 project_full_path = (Path.cwd().parent / "python-hiccup").as_posix()
 project_name = "python-repl-mcp"
+session_id = str(uuid.uuid4())
 
 
 data = """
@@ -56,7 +58,7 @@ sqlite3 "$HOME/.python-repl-mcp/kernels.db" 'DELETE FROM kernels;'
 
 
 def run():
-    return core.run(data, project_full_path)
+    return core.run(data, project_full_path, session_id)
 
 
 def list():
@@ -64,4 +66,4 @@ def list():
 
 
 def close():
-    return core.close(project_full_path)
+    return core.close(project_full_path, session_id)

@@ -14,7 +14,7 @@ __Status__: Work in progress
 
 A Python REPL that agents can use during development.
 
-The REPL MCP gives agents a persistent Python REPL. Each project gets one Jupyter kernel that stays alive across calls, so state like imports and variables carries over. Your agent sends code with `run(data, project_full_path)` and ends the session with `close(project_full_path)`. Edits to real source files are picked up automatically on the next run.
+The REPL MCP gives agents a persistent Python REPL. Each agent session gets its own Jupyter kernel per project that stays alive across calls, so state like imports and variables carries over. The `session_id` is any non-empty string that is stable for the whole agent session and unique among concurrent sessions: prefer an existing chat or session ID from the host, and fall back to a UUID generated once only if there is none. Your agent sends code with `run(data, project_full_path, session_id)` and ends the session with `close(project_full_path, session_id)`. Edits to real source files are picked up automatically on the next run.
 
 ### Installation
 
