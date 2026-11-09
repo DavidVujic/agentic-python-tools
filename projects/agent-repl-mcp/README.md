@@ -38,4 +38,4 @@ c.InteractiveShellApp.exec_lines = ['%autoreload 2']
 How to create and edit [IPython config files](https://ipython.readthedocs.io/en/stable/config/intro.html#python-configuration-files)
 
 ## Skills
-Copy the [Agent REPL MCP ](https://github.com/DavidVujic/agentic-python-tools/docs/skills/agent-repl-mcp/SKILL.md) skill to your setup and modify it as you like.
+Copy the [Agent REPL MCP ](https://github.com/DavidVujic/agentic-python-tools/blob/main/docs/skills/agent-repl-mcp/SKILL.md) skill to your setup and modify it as you like.
