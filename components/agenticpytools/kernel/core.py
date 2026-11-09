@@ -13,6 +13,16 @@ def get_kernel_name(project: Path) -> str:
     return f"{KERNEL_NAME_PREFIX}-{project.name}-{digest}"
 
 
+def get_session_kernel_name(project: Path, session_id: str) -> str:
+    """Registry key of a session's kernel in a project."""
+    if not session_id.strip():
+        raise ValueError("session_id must be a non-empty string")
+
+    digest = hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:16]
+
+    return f"{get_kernel_name(project)}-{digest}"
+
+
 def get_connection_file_path(kernel_id: str) -> Path:
     runtime_dir = Path(jupyter_runtime_dir())
 

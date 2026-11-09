@@ -20,8 +20,11 @@ def return_data(
 
 
 @mcp.tool
-def run(data: str, project_full_path: str) -> dict[str, Any | None]:
-    """Execute code in the kernel and return the output.
+def run(data: str, project_full_path: str, session_id: str) -> dict[str, Any | None]:
+    """Execute code in the session's kernel and return the output.
+
+    session_id: a non-empty string, stable for the whole session and unique among
+    concurrent sessions; prefer the host's chat or session ID, else a UUID generated once.
 
     Returns a dictionary
     stdout: from standard output
@@ -29,7 +32,7 @@ def run(data: str, project_full_path: str) -> dict[str, Any | None]:
     result: from code evaluation
     error: any caught errors during evaluation
     """
-    kc = client.create(project_full_path, TIMEOUT)
+    kc = client.create(project_full_path, session_id, TIMEOUT)
 
     try:
         msg_id = kc.execute(data)
@@ -45,11 +48,11 @@ def run(data: str, project_full_path: str) -> dict[str, Any | None]:
 
 
 @mcp.tool
-def close(project_full_path: str) -> None:
-    """Close the kernel."""
+def close(project_full_path: str, session_id: str) -> None:
+    """Close the session's kernel."""
     project = Path(project_full_path).expanduser().resolve()
 
-    client.close(project)
+    client.close(project, session_id)
 
 
 def main() -> None:
