@@ -14,12 +14,12 @@ manifest="$ARTIFACTS_DIR/manifest.txt"
 : > "$manifest"
 
 since_args=()
-if [ -n "${POLY_SINCE:-}" ]; then
+if [[ -n "${POLY_SINCE:-}" ]]; then
   since_args=(--since "$POLY_SINCE")
 fi
 
 projects="$(uv run poly diff --short ${since_args[@]+"${since_args[@]}"})"
-if [ -z "$projects" ] || [ "$projects" = "No matching tags or commits found in repository." ]; then
+if [[ -z "$projects" ]] || [[ "$projects" = "No matching tags or commits found in repository." ]]; then
   echo "No changed projects since the latest tag; nothing to build"
   exit 0
 fi
