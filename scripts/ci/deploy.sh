@@ -11,7 +11,7 @@ set -euo pipefail
 ARTIFACTS_DIR="${ARTIFACTS_DIR:-artifacts}"
 VENV_DIR="${VENV_DIR:-.venv-deploy}"
 
-if [ ! -d "$ARTIFACTS_DIR" ]; then
+if [[ ! -d "$ARTIFACTS_DIR" ]]; then
   echo "No $ARTIFACTS_DIR directory; run scripts/ci/build.sh first" >&2
   exit 1
 fi
@@ -19,7 +19,7 @@ fi
 shopt -s nullglob
 found=0
 for d in "$ARTIFACTS_DIR"/*/; do found=1; break; done
-if [ "$found" -eq 0 ]; then
+if [[ "$found" -eq 0 ]]; then
   echo "No built projects in $ARTIFACTS_DIR; nothing to deploy"
   exit 0
 fi

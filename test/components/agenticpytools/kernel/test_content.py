@@ -76,5 +76,6 @@ def test_capture_error_msg():
 
 
 def test_capture_timeout():
+    kc = fake_kc([])
     with pytest.raises(TimeoutError):
-        capture(fake_kc([]), "id", 1)
+        capture(kc, "id", 1)
