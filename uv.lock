@@ -14,7 +14,7 @@ members = [
 
 [[package]]
 name = "agent-repl-mcp"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "projects/agent-repl-mcp" }
 dependencies = [
     { name = "fastmcp" },
