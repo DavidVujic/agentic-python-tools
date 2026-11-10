@@ -27,6 +27,17 @@ or install it:
 pip install agent-repl-mcp
 ```
 
+#### Not using uv?
+Nothing else needed, If you have `uv` installed on your system.
+
+Otherwise, your project will need the `ipykernel` package. Add it as a _dev_ dependency:
+```toml
+[dependency-groups]
+dev = [
+    "ipykernel",
+]
+```
+
 ### Configure the kernel
 Add this to the global IPython configuration (that is also used by Jupyter kernel) to enable auto-reload of changed modules.
 
