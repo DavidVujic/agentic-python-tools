@@ -12,7 +12,7 @@ def _patch_which(monkeypatch, found: set[str]) -> None:
     def which(name: str) -> str | None:
         return f"/usr/bin/{name}" if name in found else None
 
-    monkeypatch.setattr("agenticpytools.linter.sources.shutil.which", which)
+    monkeypatch.setattr("agenticpytools.checks.sources.shutil.which", which)
     monkeypatch.setattr("agenticpytools.environment.core.shutil.which", which)
 
 

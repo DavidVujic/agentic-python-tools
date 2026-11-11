@@ -6,89 +6,74 @@ from agenticpytools.environment.tools import project_tool
 pytestmark = pytest.mark.environment
 
 
-def test_project_tool_uv(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "agenticpytools.environment.tools.shutil.which", lambda _: "/usr/bin/uv"
-    )
-    (tmp_path / "uv.lock").touch()
-
-    assert project_tool(tmp_path) == {
-        "tool": "uv",
-        "prefix": ["uv", "run"],
-        "source": "uv.lock",
-    }
+def _patch_which(monkeypatch, func):
+    """Replace shutil.which in the tools module with func."""
+    monkeypatch.setattr("agenticpytools.environment.tools.shutil.which", func)
 
 
-def test_project_tool_poetry(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "agenticpytools.environment.tools.shutil.which", lambda _: "/usr/bin/poetry"
-    )
-    (tmp_path / "poetry.lock").touch()
-
-    assert project_tool(tmp_path) == {
-        "tool": "poetry",
-        "prefix": ["poetry", "run"],
-        "source": "poetry.lock",
-    }
+def _write_files(tmp_path, files):
+    """Write files into tmp_path; empty content creates an empty file."""
+    for name, content in files.items():
+        (tmp_path / name).write_text(content)
 
 
-def test_project_tool_priority(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "agenticpytools.environment.tools.shutil.which", lambda _: "/usr/bin/tool"
-    )
-    (tmp_path / "uv.lock").touch()
-    (tmp_path / "poetry.lock").touch()
-
-    assert project_tool(tmp_path) == {
-        "tool": "uv",
-        "prefix": ["uv", "run"],
-        "source": "uv.lock",
-    }
-
-
-def test_project_tool_falls_through_to_next_row(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "agenticpytools.environment.tools.shutil.which",
+CASES = [
+    (
+        "uv",
+        {"uv.lock": ""},
+        lambda _: "/usr/bin/uv",
+        {"tool": "uv", "prefix": ["uv", "run"], "source": "uv.lock"},
+    ),
+    (
+        "poetry",
+        {"poetry.lock": ""},
+        lambda _: "/usr/bin/poetry",
+        {"tool": "poetry", "prefix": ["poetry", "run"], "source": "poetry.lock"},
+    ),
+    (
+        "priority-uv-wins",
+        {"uv.lock": "", "poetry.lock": ""},
+        lambda _: "/usr/bin/tool",
+        {"tool": "uv", "prefix": ["uv", "run"], "source": "uv.lock"},
+    ),
+    (
+        "falls-through-to-poetry",
+        {"uv.lock": "", "poetry.lock": ""},
         lambda name: None if name == "uv" else f"/usr/bin/{name}",
-    )
-    (tmp_path / "uv.lock").touch()
-    (tmp_path / "poetry.lock").touch()
-
-    assert project_tool(tmp_path) == {
-        "tool": "poetry",
-        "prefix": ["poetry", "run"],
-        "source": "poetry.lock",
-    }
-
-
-def test_project_tool_without_any_binary(tmp_path, monkeypatch):
-    monkeypatch.setattr("agenticpytools.environment.tools.shutil.which", lambda _: None)
-    (tmp_path / "uv.lock").touch()
-
-    assert project_tool(tmp_path) is None
-
-
-def test_project_tool_pyproject_section(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "agenticpytools.environment.tools.shutil.which", lambda _: "/usr/bin/hatch"
-    )
-    (tmp_path / "pyproject.toml").write_text("[tool.hatch]\n")
-
-    assert project_tool(tmp_path) == {
-        "tool": "hatch",
-        "prefix": ["hatch", "run"],
-        "source": "tool.hatch",
-    }
+        {"tool": "poetry", "prefix": ["poetry", "run"], "source": "poetry.lock"},
+    ),
+    (
+        "no-binary",
+        {"uv.lock": ""},
+        lambda _: None,
+        None,
+    ),
+    (
+        "hatch-section",
+        {"pyproject.toml": "[tool.hatch]\n"},
+        lambda _: "/usr/bin/hatch",
+        {"tool": "hatch", "prefix": ["hatch", "run"], "source": "tool.hatch"},
+    ),
+    (
+        "invalid-toml",
+        {"pyproject.toml": "[tool.uv"},
+        lambda _: "/usr/bin/uv",
+        None,
+    ),
+    (
+        "empty-dir",
+        {},
+        lambda _: "/usr/bin/uv",
+        None,
+    ),
+]
 
 
-def test_project_tool_empty_dir(tmp_path):
-    assert project_tool(tmp_path) is None
+@pytest.mark.parametrize("case", CASES, ids=[c[0] for c in CASES])
+def test_project_tool(tmp_path, monkeypatch, case):
+    """project_tool resolves the project's tool from its files and PATH."""
+    _, files, which, expected = case
+    _write_files(tmp_path, files)
+    _patch_which(monkeypatch, which)
 
-
-def test_project_tool_invalid_toml(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "agenticpytools.environment.tools.shutil.which", lambda _: "/usr/bin/uv"
-    )
-    (tmp_path / "pyproject.toml").write_text("[tool.uv")
-
-    assert project_tool(tmp_path) is None
+    assert project_tool(tmp_path) == expected
