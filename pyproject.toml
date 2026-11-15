@@ -19,6 +19,7 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.17.0",
     "ty>=0.0.86",
+    "watchfiles>=1.3.0",
 ]
 
 [tool.uv.workspace]
@@ -47,3 +48,4 @@ build-backend = "hatchling.build"
 "components/agenticpytools/checks" = "agenticpytools/checks"
 "components/agenticpytools/typechecker" = "agenticpytools/typechecker"
 "components/agenticpytools/runner" = "agenticpytools/runner"
+"components/agenticpytools/watcher" = "agenticpytools/watcher"
