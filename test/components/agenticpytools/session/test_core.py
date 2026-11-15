@@ -24,6 +24,7 @@ pytestmark = pytest.mark.session
 
 CANNED_LINT_COMMAND = {"argv": ["ruff", "check"]}
 CANNED_TYPECHECK_COMMAND = {"argv": ["ty", "check"]}
+CANNED_TEST_COMMAND = {"argv": ["pytest"]}
 
 
 def _patch_which(monkeypatch, found: set[str]) -> None:
@@ -40,11 +41,11 @@ def _uv_project_with_ruff(project: Path) -> None:
     (project / "pyproject.toml").write_text('[dependency-groups]\ndev = ["ruff"]\n')
 
 
-def _uv_project_with_ruff_and_ty(project: Path) -> None:
-    """A uv project whose dev group depends on ruff and ty."""
+def _uv_project_with_ruff_ty_pytest(project: Path) -> None:
+    """A uv project whose dev group depends on ruff, ty, and pytest."""
     (project / "uv.lock").touch()
     (project / "pyproject.toml").write_text(
-        '[dependency-groups]\ndev = ["ruff", "ty"]\n'
+        '[dependency-groups]\ndev = ["ruff", "ty", "pytest"]\n'
     )
 
 
@@ -90,9 +91,9 @@ def test_start_detects_and_runs_once(tmp_path, monkeypatch):
     assert get(tmp_path, "s1") is session
 
 
-def test_start_detects_and_runs_both_kinds(tmp_path, monkeypatch):
+def test_start_detects_and_runs_all_kinds(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff_and_ty(tmp_path)
+    _uv_project_with_ruff_ty_pytest(tmp_path)
     calls: list = []
     session = start(tmp_path, "s1", run=_fake_run(calls))
 
@@ -103,9 +104,11 @@ def test_start_detects_and_runs_both_kinds(tmp_path, monkeypatch):
     assert [c["argv"] for c in commands(session)["typecheck"]] == [
         ["uv", "run", "ty", "check"]
     ]
-    assert len(calls) == 2
+    assert [c["argv"] for c in commands(session)["test"]] == [["uv", "run", "pytest"]]
+    assert len(calls) == 3
     assert latest(session, "lint")["origin"] == "initial"
     assert latest(session, "typecheck")["origin"] == "initial"
+    assert latest(session, "test")["origin"] == "initial"
 
 
 def test_start_is_idempotent(tmp_path, monkeypatch):
@@ -174,9 +177,9 @@ def test_watcher_thread_reruns_on_change(tmp_path, monkeypatch):
     assert latest(session)["origin"] == "watcher"
 
 
-def test_watcher_reruns_both_kinds_on_change(tmp_path, monkeypatch):
+def test_watcher_reruns_all_kinds_on_change(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff_and_ty(tmp_path)
+    _uv_project_with_ruff_ty_pytest(tmp_path)
     calls: list = []
     session = start(tmp_path, "s1", run=_fake_run(calls))
 
@@ -184,24 +187,25 @@ def test_watcher_reruns_both_kinds_on_change(tmp_path, monkeypatch):
     (tmp_path / "new.py").write_text("x = 1\n")
 
     assert _wait_until(
-        lambda: (
-            latest(session, "lint")["origin"] == "watcher"
-            and latest(session, "typecheck")["origin"] == "watcher"
+        lambda: all(
+            latest(session, kind)["origin"] == "watcher"
+            for kind in ("lint", "typecheck", "test")
         )
-    ), "watcher did not rerun both kinds"
+    ), "watcher did not rerun all kinds"
     assert latest(session, "lint")["changed_files"] == ["new.py"]
     assert latest(session, "typecheck")["changed_files"] == ["new.py"]
+    assert latest(session, "test")["changed_files"] == ["new.py"]
 
 
-def test_run_batch_runs_both_kinds(tmp_path, monkeypatch):
+def test_run_batch_runs_all_kinds(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff_and_ty(tmp_path)
+    _uv_project_with_ruff_ty_pytest(tmp_path)
     calls: list = []
     session = start(tmp_path, "s1", run=_fake_run(calls))
 
     _run_batch(session, _fake_run(calls), ["x.py"])
 
-    for kind in ("lint", "typecheck"):
+    for kind in ("lint", "typecheck", "test"):
         assert latest(session, kind)["origin"] == "watcher"
         assert latest(session, kind)["changed_files"] == ["x.py"]
 
@@ -297,21 +301,6 @@ def test_lint_without_latest_runs_and_stores(tmp_path, monkeypatch):
     assert lint_calls == [([CANNED_LINT_COMMAND], None)]
 
 
-def test_lint_returns_cached_when_ready(tmp_path, monkeypatch):
-    _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff(tmp_path)
-    calls: list = []
-    session = start(tmp_path, "s1", run=_fake_run(calls))
-    initial = latest(session)
-    lint_calls: list = []
-
-    entry = lint(tmp_path, "s1", run=_fake_run(lint_calls))
-
-    assert entry == initial
-    assert entry["origin"] == "initial"
-    assert lint_calls == []
-
-
 def test_lint_returns_running_state_when_watcher_in_flight(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv"})
     calls: list = []
@@ -331,48 +320,56 @@ def test_lint_empty_session_id_raises(tmp_path):
         lint(tmp_path, "")
 
 
-def test_run_check_typecheck_without_latest_runs_and_stores(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("kind", "command"),
+    [
+        ("typecheck", CANNED_TYPECHECK_COMMAND),
+        ("test", CANNED_TEST_COMMAND),
+    ],
+    ids=["typecheck", "test"],
+)
+def test_run_check_without_latest_runs_and_stores(tmp_path, monkeypatch, kind, command):
     _patch_which(monkeypatch, {"uv"})
     _uv_project_with_ruff(tmp_path)
     calls: list = []
     session = start(tmp_path, "s1", run=_fake_run(calls))
 
-    monkeypatch.setitem(
-        DETECTORS, "typecheck", lambda project: [CANNED_TYPECHECK_COMMAND]
-    )
+    monkeypatch.setitem(DETECTORS, kind, lambda project: [command])
     check_calls: list = []
 
-    entry = run_check(tmp_path, "s1", "typecheck", run=_fake_run(check_calls))
+    entry = run_check(tmp_path, "s1", kind, run=_fake_run(check_calls))
 
     assert entry["origin"] == "on-demand"
     assert entry["ok"] is True
-    assert check_calls == [([CANNED_TYPECHECK_COMMAND], None)]
-    assert latest(session, "typecheck")["results"] is not None
+    assert check_calls == [([command], None)]
+    assert latest(session, kind)["results"] is not None
 
 
-def test_run_check_returns_cached_when_ready(tmp_path, monkeypatch):
+@pytest.mark.parametrize("kind", ["lint", "typecheck", "test"])
+def test_run_check_returns_cached_when_ready(tmp_path, monkeypatch, kind):
     _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff_and_ty(tmp_path)
+    _uv_project_with_ruff_ty_pytest(tmp_path)
     calls: list = []
     session = start(tmp_path, "s1", run=_fake_run(calls))
-    initial = latest(session, "typecheck")
+    initial = latest(session, kind)
     check_calls: list = []
 
-    entry = run_check(tmp_path, "s1", "typecheck", run=_fake_run(check_calls))
+    entry = run_check(tmp_path, "s1", kind, run=_fake_run(check_calls))
 
     assert entry == initial
     assert entry["origin"] == "initial"
     assert check_calls == []
 
 
-def test_run_check_typecheck_empty_project(tmp_path, monkeypatch):
+@pytest.mark.parametrize("kind", ["typecheck", "test"])
+def test_run_check_empty_project(tmp_path, monkeypatch, kind):
     _patch_which(monkeypatch, {"uv"})
     calls: list = []
     start(tmp_path, "s1", run=_fake_run(calls))
     check_calls: list = []
 
-    entry = run_check(tmp_path, "s1", "typecheck", run=_fake_run(check_calls))
+    entry = run_check(tmp_path, "s1", kind, run=_fake_run(check_calls))
 
     assert entry["origin"] == "none"
-    assert entry["note"] == "no typecheck commands detected for project"
+    assert entry["note"] == f"no {kind} commands detected for project"
     assert check_calls == []

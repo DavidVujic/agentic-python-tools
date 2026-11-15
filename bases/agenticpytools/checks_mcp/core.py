@@ -1,12 +1,16 @@
-"""MCP server: watch a project and serve cached lint and typecheck results."""
+"""MCP server: watch a project and serve cached lint, typecheck, and test results."""
 
 from pathlib import Path
 
 from agenticpytools import session as sessions
 from agenticpytools.checks_mcp.instructions import summary
 from agenticpytools.linter import detect_lint_commands
+from agenticpytools.session import KINDS, SESSION_ID_ERROR_MESSAGE
+from agenticpytools.tester import detect_test_commands
 from agenticpytools.typechecker import detect_typecheck_commands
 from fastmcp import FastMCP
+
+EMPTY_SESSION_ID_ERROR = {"error": SESSION_ID_ERROR_MESSAGE}
 
 mcp = FastMCP(name="checks-mcp", instructions=summary)
 
@@ -15,7 +19,7 @@ mcp = FastMCP(name="checks-mcp", instructions=summary)
 def start_watching(project_full_path: str, session_id: str) -> dict:
     """Start watching a project; returns its commands and initial check results."""
     if not session_id.strip():
-        return {"error": "session_id must be a non-empty string"}
+        return {**EMPTY_SESSION_ID_ERROR}
 
     try:
         session = sessions.start(Path(project_full_path), session_id)
@@ -25,9 +29,7 @@ def start_watching(project_full_path: str, session_id: str) -> dict:
             "session_id": session_id,
             "watching": True,
             "commands": sessions.commands(session),
-            "initial": {
-                kind: sessions.latest(session, kind) for kind in ("lint", "typecheck")
-            },
+            "initial": {kind: sessions.latest(session, kind) for kind in KINDS},
         }
     except (OSError, ValueError) as exc:
         return {"error": f"failed to start watching: {exc}"}
@@ -35,9 +37,9 @@ def start_watching(project_full_path: str, session_id: str) -> dict:
 
 @mcp.tool
 def detected_commands(project_full_path: str, session_id: str) -> dict:
-    """The lint and typecheck commands for a watched session, detected on demand otherwise."""
+    """The lint, typecheck, and test commands for a watched session, detected on demand otherwise."""
     if not session_id.strip():
-        return {"error": "session_id must be a non-empty string"}
+        return {**EMPTY_SESSION_ID_ERROR}
 
     try:
         session = sessions.get(Path(project_full_path), session_id)
@@ -50,6 +52,7 @@ def detected_commands(project_full_path: str, session_id: str) -> dict:
         return {
             "lint": detect_lint_commands(path),
             "typecheck": detect_typecheck_commands(path),
+            "test": detect_test_commands(path),
         }
     except (OSError, ValueError) as exc:
         return {"error": f"failed to detect commands: {exc}"}
@@ -59,7 +62,7 @@ def detected_commands(project_full_path: str, session_id: str) -> dict:
 def lint(project_full_path: str, session_id: str) -> dict:
     """Latest cached lint results for the session; runs lint on demand if not ready."""
     if not session_id.strip():
-        return {"error": "session_id must be a non-empty string"}
+        return {**EMPTY_SESSION_ID_ERROR}
 
     try:
         return sessions.lint(Path(project_full_path), session_id)
@@ -71,7 +74,7 @@ def lint(project_full_path: str, session_id: str) -> dict:
 def typecheck(project_full_path: str, session_id: str) -> dict:
     """Latest cached typecheck results for the session; runs typecheck on demand if not ready."""
     if not session_id.strip():
-        return {"error": "session_id must be a non-empty string"}
+        return {**EMPTY_SESSION_ID_ERROR}
 
     try:
         return sessions.run_check(Path(project_full_path), session_id, "typecheck")
@@ -80,10 +83,22 @@ def typecheck(project_full_path: str, session_id: str) -> dict:
 
 
 @mcp.tool
+def test(project_full_path: str, session_id: str) -> dict:
+    """Latest cached test results for the session; runs the tests on demand if not ready."""
+    if not session_id.strip():
+        return {**EMPTY_SESSION_ID_ERROR}
+
+    try:
+        return sessions.run_check(Path(project_full_path), session_id, "test")
+    except (OSError, ValueError) as exc:
+        return {"error": f"failed to run tests: {exc}"}
+
+
+@mcp.tool
 def stop_watching(project_full_path: str, session_id: str) -> dict:
     """Stop watching a project session; the watcher thread exits."""
     if not session_id.strip():
-        return {"error": "session_id must be a non-empty string"}
+        return {**EMPTY_SESSION_ID_ERROR}
 
     try:
         stopped = sessions.stop(Path(project_full_path), session_id)

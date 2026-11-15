@@ -9,11 +9,17 @@ from pathlib import Path
 
 from agenticpytools.linter import detect_lint_commands
 from agenticpytools.runner import run_commands
+from agenticpytools.tester import detect_test_commands
 from agenticpytools.typechecker import detect_typecheck_commands
 from agenticpytools.watcher import changed_python_files
 
-KINDS = ("lint", "typecheck")
-DETECTORS = {"lint": detect_lint_commands, "typecheck": detect_typecheck_commands}
+KINDS = ("lint", "typecheck", "test")
+DETECTORS = {
+    "lint": detect_lint_commands,
+    "typecheck": detect_typecheck_commands,
+    "test": detect_test_commands,
+}
+SESSION_ID_ERROR_MESSAGE = "session_id must be a non-empty string"
 
 _SESSIONS: dict[str, dict] = {}
 _LOCK = threading.Lock()
@@ -22,7 +28,7 @@ _LOCK = threading.Lock()
 def _session_key(project: Path, session_id: str) -> str:
     """Registry key of a session watching a project."""
     if not session_id.strip():
-        raise ValueError("session_id must be a non-empty string")
+        raise ValueError(SESSION_ID_ERROR_MESSAGE)
 
     return json.dumps([session_id, str(Path(project).expanduser().resolve())])
 
