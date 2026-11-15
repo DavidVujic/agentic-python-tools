@@ -8,8 +8,24 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "agent-checks-mcp",
     "agent-repl-mcp",
     "agentic-python-tools",
+]
+
+[[package]]
+name = "agent-checks-mcp"
+version = "0.0.1"
+source = { editable = "projects/agent-checks-mcp" }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "watchfiles" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastmcp" },
+    { name = "watchfiles" },
 ]
 
 [[package]]
