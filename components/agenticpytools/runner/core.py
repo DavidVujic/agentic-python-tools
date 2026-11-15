@@ -1,5 +1,6 @@
 """Run detected command dicts as subprocesses."""
 
+import os
 import subprocess
 
 
@@ -21,6 +22,7 @@ def _run_one(cmd: dict, files: list[str] | None, timeout: float) -> dict:
         proc = subprocess.run(
             argv,
             cwd=cmd.get("cwd"),
+            env=_child_env(),
             capture_output=True,
             check=False,
             text=True,
@@ -33,6 +35,24 @@ def _run_one(cmd: dict, files: list[str] | None, timeout: float) -> dict:
         stderr = _decoded(exc.stderr) or f"timed out after {timeout}s"
 
         return _result(argv, 124, _decoded(exc.stdout), stderr)
+
+
+STRIPPED_ENV_VARS = frozenset(
+    {
+        "VIRTUAL_ENV",
+        "CONDA_PREFIX",
+        "CONDA_DEFAULT_ENV",
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "POETRY_VIRTUALENVS_PATH",
+        "UV_PROJECT_ENVIRONMENT",
+    }
+)
+
+
+def _child_env() -> dict:
+    """Environment for child tools: the caller's activated venv must not leak into the target project."""
+    return {k: v for k, v in os.environ.items() if k not in STRIPPED_ENV_VARS}
 
 
 def _result(argv: list[str], returncode: int, stdout: str, stderr: str) -> dict:

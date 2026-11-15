@@ -1,5 +1,6 @@
 """Unit tests for running detected commands as subprocesses."""
 
+import json
 import os
 import sys
 
@@ -39,6 +40,31 @@ def test_cwd_respected(tmp_path):
     results = run_commands([command])
 
     assert results[0]["stdout"].strip() == os.path.realpath(tmp_path)
+
+
+def test_child_env_strips_activation_vars(monkeypatch):
+    monkeypatch.setenv("VIRTUAL_ENV", "/agent/venv")
+    monkeypatch.setenv("PYTHONPATH", "/agent/src")
+    monkeypatch.setenv("CONDA_DEFAULT_ENV", "/agent/conda")
+    monkeypatch.setenv("POETRY_VIRTUALENVS_PATH", "/agent/poetry")
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", "/agent/uv")
+    monkeypatch.setenv("KEEP_ME", "1")
+
+    code = (
+        "import os, json; print(json.dumps({"
+        "k: os.environ.get(k) for k in "
+        "['VIRTUAL_ENV', 'PYTHONPATH', 'CONDA_DEFAULT_ENV', "
+        "'POETRY_VIRTUALENVS_PATH', 'UV_PROJECT_ENVIRONMENT', 'KEEP_ME']}))"
+    )
+    results = run_commands([_python_command(code)])
+
+    env = json.loads(results[0]["stdout"])
+    assert env["VIRTUAL_ENV"] is None
+    assert env["PYTHONPATH"] is None
+    assert env["CONDA_DEFAULT_ENV"] is None
+    assert env["POETRY_VIRTUALENVS_PATH"] is None
+    assert env["UV_PROJECT_ENVIRONMENT"] is None
+    assert env["KEEP_ME"] == "1"
 
 
 def test_files_appended_when_tool_takes_files():
