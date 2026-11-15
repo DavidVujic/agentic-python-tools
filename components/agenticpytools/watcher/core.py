@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+import threading
 import time
 from collections.abc import Iterable, Iterator
 from pathlib import Path
@@ -22,14 +23,16 @@ IGNORED_DIR_NAMES = {
 }
 
 
-def changed_python_files(project: Path, debounce: float = 0.5) -> Iterator[list[str]]:
-    """Yield debounced batches of changed .py paths relative to the project."""
+def changed_python_files(
+    project: Path, debounce: float = 0.5, stop_event: threading.Event | None = None
+) -> Iterator[list[str]]:
+    """Yield debounced batches of changed .py paths until stop_event is set."""
     path = Path(project).expanduser().resolve()
 
     if importlib.util.find_spec("watchfiles") is None:
-        return _poll(path, interval=max(debounce, 0.2))
+        return _poll(path, interval=max(debounce, 0.2), stop_event=stop_event)
 
-    return _watchfiles_events(path, debounce)
+    return _watchfiles_events(path, debounce, stop_event)
 
 
 def _ignored_dir(name: str) -> bool:
@@ -85,11 +88,16 @@ def _changed(before: dict[str, float], after: dict[str, float]) -> list[str]:
     return sorted(changed | deleted)
 
 
-def _poll(project: Path, interval: float) -> Iterator[list[str]]:
-    """Poll snapshots forever, yielding each non-empty batch of changed paths."""
+def _poll(
+    project: Path, interval: float, stop_event: threading.Event | None = None
+) -> Iterator[list[str]]:
+    """Poll snapshots until stop_event is set, yielding each non-empty batch."""
     previous = _watched_files(project)
 
     while True:
+        if stop_event is not None and stop_event.is_set():
+            return
+
         time.sleep(interval)
         current = _watched_files(project)
         changed = _changed(previous, current)
@@ -112,7 +120,9 @@ def _watched_paths(
         }
 
 
-def _watchfiles_events(project: Path, debounce: float) -> Iterator[list[str]]:
+def _watchfiles_events(
+    project: Path, debounce: float, stop_event: threading.Event | None = None
+) -> Iterator[list[str]]:
     """Yield sorted batches of changed .py paths after events stay quiet."""
     from watchfiles import watch
 
@@ -123,6 +133,7 @@ def _watchfiles_events(project: Path, debounce: float) -> Iterator[list[str]]:
         step=50,
         rust_timeout=100,
         yield_on_timeout=True,
+        stop_event=stop_event,
     )
     batch: set[str] = set()
     deadline = 0.0
