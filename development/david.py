@@ -83,5 +83,9 @@ def lint_results(path: str):
     return checks_mcp.lint(path, session_id)
 
 
+def typecheck_results(path: str):
+    return checks_mcp.typecheck(path, session_id)
+
+
 def check_commands(path: str):
     return checks_mcp.detected_commands(path, session_id)

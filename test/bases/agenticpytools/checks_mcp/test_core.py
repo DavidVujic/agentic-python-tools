@@ -9,8 +9,9 @@ from agenticpytools.checks_mcp.core import (
     lint,
     start_watching,
     stop_watching,
+    typecheck,
 )
-from agenticpytools.session.core import _SESSIONS, _session_key
+from agenticpytools.session.core import _SESSIONS, DETECTORS, _session_key
 
 pytestmark = pytest.mark.checks_mcp
 
@@ -19,6 +20,13 @@ CANNED_COMMAND = {
     "cwd": "/p",
     "source": "pyproject",
     "tool": "ruff",
+}
+
+CANNED_TYPECHECK_COMMAND = {
+    "argv": ["ty", "check"],
+    "cwd": "/p",
+    "source": "pyproject",
+    "tool": "ty",
 }
 
 CANNED_RESULT = {
@@ -37,11 +45,26 @@ CANNED_LINT_ENTRY = {
     "origin": "initial",
 }
 
+CANNED_TYPECHECK_ENTRY = {
+    "kind": "typecheck",
+    "results": [CANNED_RESULT],
+    "ran_at": "t",
+    "changed_files": [],
+    "ok": True,
+    "origin": "initial",
+}
+
 CANNED = {
     "project": "/p",
     "session_id": "s1",
-    "commands": {"lint": [CANNED_COMMAND]},
-    "latest": {"lint": CANNED_LINT_ENTRY},
+    "commands": {
+        "lint": [CANNED_COMMAND],
+        "typecheck": [CANNED_TYPECHECK_COMMAND],
+    },
+    "latest": {
+        "lint": CANNED_LINT_ENTRY,
+        "typecheck": CANNED_TYPECHECK_ENTRY,
+    },
     "running": False,
     "thread": None,
 }
@@ -72,8 +95,14 @@ def test_start_watching(monkeypatch):
     assert result["project"] == "/p"
     assert result["session_id"] == "s1"
     assert result["watching"] is True
-    assert result["commands"] == {"lint": [CANNED_COMMAND]}
-    assert result["initial"] == {**CANNED_LINT_ENTRY, "running": False}
+    assert result["commands"] == {
+        "lint": [CANNED_COMMAND],
+        "typecheck": [CANNED_TYPECHECK_COMMAND],
+    }
+    assert result["initial"] == {
+        "lint": {**CANNED_LINT_ENTRY, "running": False},
+        "typecheck": {**CANNED_TYPECHECK_ENTRY, "running": False},
+    }
 
 
 def test_start_watching_error(monkeypatch):
@@ -94,14 +123,19 @@ def test_start_watching_empty_session_id():
 def test_detected_commands_with_session(monkeypatch):
     monkeypatch.setattr(sessions, "get", lambda project, session_id: CANNED)
 
-    assert detected_commands("/p", "s1") == {"lint": [CANNED_COMMAND]}
+    assert detected_commands("/p", "s1") == {
+        "lint": [CANNED_COMMAND],
+        "typecheck": [CANNED_TYPECHECK_COMMAND],
+    }
 
 
 def test_detected_commands_detects_on_demand(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv"})
     monkeypatch.setattr(sessions, "get", lambda project, session_id: None)
     (tmp_path / "uv.lock").touch()
-    (tmp_path / "pyproject.toml").write_text('[dependency-groups]\ndev = ["ruff"]\n')
+    (tmp_path / "pyproject.toml").write_text(
+        '[dependency-groups]\ndev = ["ruff", "ty"]\n'
+    )
 
     result = detected_commands(str(tmp_path), "s1")
 
@@ -109,14 +143,18 @@ def test_detected_commands_detects_on_demand(tmp_path, monkeypatch):
         ["uv", "run", "ruff", "check"],
         ["uv", "run", "ruff", "format", "--check"],
     ]
-    assert all({"cwd", "source", "tool"} <= set(c) for c in result["lint"])
+    assert [c["argv"] for c in result["typecheck"]] == [["uv", "run", "ty", "check"]]
+    assert all(
+        {"cwd", "source", "tool"} <= set(c)
+        for c in [*result["lint"], *result["typecheck"]]
+    )
 
 
 def test_detected_commands_empty_project(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv"})
     monkeypatch.setattr(sessions, "get", lambda project, session_id: None)
 
-    assert detected_commands(str(tmp_path), "s1") == {"lint": []}
+    assert detected_commands(str(tmp_path), "s1") == {"lint": [], "typecheck": []}
 
 
 def test_detected_commands_error(monkeypatch):
@@ -136,10 +174,7 @@ def test_detected_commands_empty_session_id():
 
 
 def test_lint_runs_on_demand_without_session(monkeypatch):
-    monkeypatch.setattr(
-        "agenticpytools.session.core.detect_lint_commands",
-        lambda project: [CANNED_COMMAND],
-    )
+    monkeypatch.setitem(DETECTORS, "lint", lambda project: [CANNED_COMMAND])
     calls: list = []
     monkeypatch.setattr("agenticpytools.session.core.run_commands", _fake_run(calls))
 
@@ -178,6 +213,46 @@ def test_lint_error(monkeypatch):
 
 def test_lint_empty_session_id():
     assert lint("/p", "") == {"error": "session_id must be a non-empty string"}
+
+
+def test_typecheck_runs_on_demand_without_session(monkeypatch):
+    monkeypatch.setitem(
+        DETECTORS, "typecheck", lambda project: [CANNED_TYPECHECK_COMMAND]
+    )
+    calls: list = []
+    monkeypatch.setattr("agenticpytools.session.core.run_commands", _fake_run(calls))
+
+    result = typecheck("/p", "s1")
+
+    assert result["ok"] is True
+    assert result["results"] == [CANNED_RESULT]
+    assert result["ran_at"] is not None
+    assert calls == [([CANNED_TYPECHECK_COMMAND], None)]
+
+
+def test_typecheck_returns_cached(monkeypatch):
+    calls: list = []
+    monkeypatch.setattr("agenticpytools.session.core.run_commands", _fake_run(calls))
+    monkeypatch.setitem(_SESSIONS, _session_key(Path("/p"), "s1"), CANNED)
+
+    result = typecheck("/p", "s1")
+
+    assert result == {**CANNED_TYPECHECK_ENTRY, "running": False}
+    assert result["origin"] == "initial"
+    assert calls == []
+
+
+def test_typecheck_error(monkeypatch):
+    def boom(project, session_id, kind):
+        raise OSError("boom")
+
+    monkeypatch.setattr(sessions, "run_check", boom)
+
+    assert typecheck("/p", "s1") == {"error": "failed to run typecheck: boom"}
+
+
+def test_typecheck_empty_session_id():
+    assert typecheck("/p", "") == {"error": "session_id must be a non-empty string"}
 
 
 def test_stop_watching(monkeypatch):

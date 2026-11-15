@@ -1,14 +1,19 @@
-"""Session state: background watching of a project's lint commands."""
+"""Session state: background watching of a project's check commands."""
 
 import json
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
 from agenticpytools.linter import detect_lint_commands
 from agenticpytools.runner import run_commands
+from agenticpytools.typechecker import detect_typecheck_commands
 from agenticpytools.watcher import changed_python_files
+
+KINDS = ("lint", "typecheck")
+DETECTORS = {"lint": detect_lint_commands, "typecheck": detect_typecheck_commands}
 
 _SESSIONS: dict[str, dict] = {}
 _LOCK = threading.Lock()
@@ -25,7 +30,7 @@ def _session_key(project: Path, session_id: str) -> str:
 def start(
     project: Path, session_id: str, run: Callable[..., list[dict]] | None = None
 ) -> dict:
-    """Start watching a project's lint commands; idempotent per session."""
+    """Start watching a project's check commands; idempotent per session."""
     if run is None:
         run = run_commands
 
@@ -39,29 +44,45 @@ def start(
         session = {
             "project": str(path),
             "session_id": session_id,
-            "commands": {"lint": detect_lint_commands(path)},
+            "commands": {kind: DETECTORS[kind](path) for kind in KINDS},
             "latest": {},
-            "running": False,
+            "running": True,
             "thread": None,
             "stop": threading.Event(),
         }
         _SESSIONS[key] = session
 
-        try:
-            if session["commands"]["lint"]:
-                results = run(session["commands"]["lint"], files=None)
-                session["latest"]["lint"] = _latest_entry(
-                    "lint", results, files=[], origin="initial"
-                )
+    try:
+        _run_initial(session, run)
+    except Exception:
+        with _LOCK:
+            _SESSIONS.pop(key, None)
+            session["running"] = False
 
-            thread = threading.Thread(target=_watch, args=(session, run), daemon=True)
-            session["thread"] = thread
+        raise
+
+    with _LOCK:
+        session["running"] = False
+        thread = threading.Thread(target=_watch, args=(session, run), daemon=True)
+        session["thread"] = thread
+
+        try:
             thread.start()
         except Exception:
             _SESSIONS.pop(key, None)
             raise
 
     return session
+
+
+def _run_initial(session: dict, run: Callable[..., list[dict]]) -> None:
+    """Run every kind's commands once at session start."""
+    for kind in KINDS:
+        cmds = session["commands"][kind]
+
+        if cmds:
+            results = run(cmds, files=None)
+            _store_latest(session, _latest_entry(kind, results, [], origin="initial"))
 
 
 def _default_entry(kind: str) -> dict:
@@ -107,7 +128,7 @@ def _store_latest(session: dict, entry: dict) -> None:
 
 
 def _watch(session: dict, run: Callable[..., list[dict]]) -> None:
-    """Rerun the lint commands whenever watched Python files change."""
+    """Rerun the check commands whenever watched Python files change."""
     for batch in changed_python_files(
         Path(session["project"]), stop_event=session["stop"]
     ):
@@ -117,13 +138,28 @@ def _watch(session: dict, run: Callable[..., list[dict]]) -> None:
         try:
             with _LOCK:
                 session["running"] = True
-            results = run(session["commands"]["lint"], files=batch)
-            _store_latest(
-                session, _latest_entry("lint", results, batch, origin="watcher")
-            )
+
+            _run_batch(session, run, batch)
         finally:
             with _LOCK:
                 session["running"] = False
+
+
+def _run_batch(session: dict, run: Callable[..., list[dict]], batch: list[str]) -> None:
+    """Run every kind's commands once for a batch of changed files."""
+
+    def run_kind(kind: str) -> None:
+        cmds = session["commands"][kind]
+
+        if cmds:
+            results = run(cmds, files=batch)
+            _store_latest(
+                session,
+                _latest_entry(kind, results, batch, origin="watcher"),
+            )
+
+    with ThreadPoolExecutor(max_workers=len(KINDS)) as executor:
+        list(executor.map(run_kind, KINDS))
 
 
 def latest(session: dict, kind: str = "lint") -> dict:
@@ -134,15 +170,18 @@ def latest(session: dict, kind: str = "lint") -> dict:
         return {**entry, "running": session["running"]}
 
 
-def _in_flight_state(entry: dict | None) -> dict:
+def _in_flight_state(entry: dict | None, kind: str) -> dict:
     """The state to serve while a watcher run is in flight."""
-    return {**(entry or _default_entry("lint")), "running": True}
+    return {**(entry or _default_entry(kind)), "running": True}
 
 
-def lint(
-    project: Path, session_id: str, run: Callable[..., list[dict]] | None = None
+def run_check(
+    project: Path,
+    session_id: str,
+    kind: str,
+    run: Callable[..., list[dict]] | None = None,
 ) -> dict:
-    """Latest cached lint entry if ready; otherwise detect and run lint now."""
+    """Latest cached entry for a kind if ready; otherwise detect and run now."""
     if run is None:
         run = run_commands
 
@@ -151,37 +190,40 @@ def lint(
 
     with _LOCK:
         session = _SESSIONS.get(key)
-        entry = session["latest"].get("lint") if session else None
+        entry = session["latest"].get(kind) if session else None
         running = session["running"] if session else False
 
     if entry is not None:
         return {**entry, "running": running}
 
     if session is not None and running:
-        return _in_flight_state(entry)
+        return _in_flight_state(entry, kind)
 
-    session_commands = session["commands"]["lint"] if session else []
-    lint_commands = session_commands or detect_lint_commands(path)
+    session_cmds = session["commands"].get(kind) if session else []
+    cmds = session_cmds or DETECTORS.get(kind, lambda p: [])(path)
 
-    if not lint_commands:
+    if not cmds:
         return {
-            "kind": "lint",
-            "results": None,
-            "ran_at": None,
-            "changed_files": [],
-            "ok": None,
+            **_default_entry(kind),
             "origin": "none",
             "running": running,
-            "note": "no lint commands detected for project",
+            "note": f"no {kind} commands detected for project",
         }
 
-    results = run(lint_commands, files=None)
-    entry = _latest_entry("lint", results, files=[], origin="on-demand")
+    results = run(cmds, files=None)
+    entry = _latest_entry(kind, results, files=[], origin="on-demand")
 
     if session is not None:
         _store_latest(session, entry)
 
     return {**entry, "running": running}
+
+
+def lint(
+    project: Path, session_id: str, run: Callable[..., list[dict]] | None = None
+) -> dict:
+    """Latest cached lint entry if ready; otherwise detect and run lint now."""
+    return run_check(project, session_id, "lint", run)
 
 
 def commands(session: dict) -> dict:
