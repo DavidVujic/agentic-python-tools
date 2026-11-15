@@ -16,6 +16,20 @@ def _patch_which(monkeypatch, found: set[str]) -> None:
     monkeypatch.setattr("agenticpytools.environment.core.shutil.which", which)
 
 
+def _fake_venv(project: Path, dist: str) -> None:
+    """A venv with a Python binary and one installed distribution."""
+    venv = project / ".venv"
+    python = venv / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    python.touch()
+
+    dist_info = (
+        venv / "lib" / "python3.12" / "site-packages" / f"{dist}-7.0.0.dist-info"
+    )
+    dist_info.mkdir(parents=True)
+    (dist_info / "METADATA").write_text(f"Name: {dist}\n")
+
+
 def test_justfile_wins_over_makefile(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"just", "make"})
     (tmp_path / "justfile").write_text("lint:\n    ruff check .\n")
@@ -118,24 +132,26 @@ def test_invalid_toml_skips_pyproject_sources(tmp_path, monkeypatch):
 
 def test_venv_fallback(tmp_path, monkeypatch):
     _patch_which(monkeypatch, set())
-    python = tmp_path / ".venv" / "bin" / "python"
-    python.parent.mkdir(parents=True)
-    python.touch()
-
-    dist_info = (
-        tmp_path
-        / ".venv"
-        / "lib"
-        / "python3.12"
-        / "site-packages"
-        / "flake8-7.0.0.dist-info"
-    )
-    dist_info.mkdir(parents=True)
-    (dist_info / "METADATA").write_text("Name: flake8\n")
+    _fake_venv(tmp_path, "flake8")
 
     commands = detect_lint_commands(tmp_path)
 
     expected_python = str(Path(tmp_path).resolve() / ".venv" / "bin" / "python")
+    assert [c["argv"] for c in commands] == [[expected_python, "-m", "flake8"]]
+    assert commands[0]["source"] == "venv"
+
+
+def test_venv_found_through_symlinked_project_dir(tmp_path, monkeypatch):
+    _patch_which(monkeypatch, set())
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+    _fake_venv(real, "flake8")
+
+    commands = detect_lint_commands(link)
+
+    expected_python = str(link.resolve() / ".venv" / "bin" / "python")
     assert [c["argv"] for c in commands] == [[expected_python, "-m", "flake8"]]
     assert commands[0]["source"] == "venv"
 

@@ -13,6 +13,7 @@ class Tool(TypedDict, total=False):
     section_prefixes: list[str]
     ini_sections: list[str]
     files: list[str]
+    takes_files: bool
 
 
 def normalize_dep_name(dep: str) -> str:

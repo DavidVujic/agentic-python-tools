@@ -15,9 +15,16 @@ MAKEFILES = ("Makefile", "GNUmakefile")
 INI_FILES = ("setup.cfg", "tox.ini")
 
 
-def _command(argv: list[str], source: str, tool: str) -> dict:
+def _command(
+    argv: list[str], source: str, tool: str, takes_files: bool = False
+) -> dict:
     """A detected command; detect_commands adds the cwd."""
-    return {"argv": argv, "source": source, "tool": tool}
+    command = {"argv": argv, "source": source, "tool": tool}
+
+    if takes_files:
+        command["takes_files"] = True
+
+    return command
 
 
 def _read_pyproject(project: Path) -> dict | None:
@@ -172,7 +179,12 @@ def pyproject_tool_commands(
     data = _read_pyproject(project)
 
     return [
-        _command(prefix + [name] + args, source, name)
+        _command(
+            prefix + [name] + args,
+            source,
+            name,
+            takes_files=tools[name].get("takes_files", False),
+        )
         for name, source in _detected_tools(project, data, tools)
         for args in tools[name]["argvs"]
     ]
@@ -258,6 +270,7 @@ def _has_marker_file(project: Path, tool: Tool) -> bool:
 
 def venv_commands(project: Path, tools: dict[str, Tool]) -> list[dict]:
     """Commands using the tools installed in the project venv."""
+    project = Path(project).expanduser().resolve()
     venv = venv_dir(project)
 
     if not venv.is_dir():
@@ -271,7 +284,12 @@ def venv_commands(project: Path, tools: dict[str, Tool]) -> list[dict]:
     installed = _venv_packages(venv)
 
     return [
-        _command([python, "-m", tools[name].get("module", name)] + args, "venv", name)
+        _command(
+            [python, "-m", tools[name].get("module", name)] + args,
+            "venv",
+            name,
+            takes_files=tools[name].get("takes_files", False),
+        )
         for name in tools
         if name in installed
         for args in tools[name]["argvs"]
