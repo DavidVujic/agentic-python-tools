@@ -1,7 +1,5 @@
 """Debounced batches of changed Python files in a project."""
 
-import importlib.util
-import os
 import threading
 import time
 from collections.abc import Iterable, Iterator
@@ -29,9 +27,6 @@ def changed_python_files(
     """Yield debounced batches of changed .py paths until stop_event is set."""
     path = Path(project).expanduser().resolve()
 
-    if importlib.util.find_spec("watchfiles") is None:
-        return _poll(path, interval=max(debounce, 0.2), stop_event=stop_event)
-
     return _watchfiles_events(path, debounce, stop_event)
 
 
@@ -56,56 +51,6 @@ def _relative(path: Path, project: Path) -> str | None:
         return path.relative_to(project).as_posix()
 
     return None
-
-
-def _watched_files(project: Path) -> dict[str, float]:
-    """Snapshot of watched .py files keyed by relative posix path."""
-    snapshot: dict[str, float] = {}
-
-    for root, dirnames, filenames in os.walk(project):
-        dirnames[:] = [name for name in dirnames if not _ignored_dir(name)]
-
-        for name in filenames:
-            if not name.endswith(".py"):
-                continue
-
-            path = Path(root) / name
-            try:
-                mtime = path.stat().st_mtime
-            except FileNotFoundError:
-                continue
-
-            snapshot[path.relative_to(project).as_posix()] = mtime
-
-    return snapshot
-
-
-def _changed(before: dict[str, float], after: dict[str, float]) -> list[str]:
-    """Sorted paths that are new, modified, or deleted between snapshots."""
-    changed = {path for path, mtime in after.items() if before.get(path) != mtime}
-    deleted = set(before) - set(after)
-
-    return sorted(changed | deleted)
-
-
-def _poll(
-    project: Path, interval: float, stop_event: threading.Event | None = None
-) -> Iterator[list[str]]:
-    """Poll snapshots until stop_event is set, yielding each non-empty batch."""
-    previous = _watched_files(project)
-
-    while True:
-        if stop_event is not None and stop_event.is_set():
-            return
-
-        time.sleep(interval)
-        current = _watched_files(project)
-        changed = _changed(previous, current)
-
-        if changed:
-            yield changed
-
-        previous = current
 
 
 def _watched_paths(
