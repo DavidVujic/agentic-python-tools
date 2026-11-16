@@ -48,18 +48,19 @@ def start(
             return _SESSIONS[key]
 
         detected = {kind: DETECTORS[kind](path) for kind in KINDS}
+        kinds = tuple(kind for kind in KINDS if detected[kind])
         session = {
             "project": str(path),
             "session_id": session_id,
             "commands": detected,
             "latest": {},
-            "running": any(detected.values()),
+            "pending": {kind: int(kind in kinds) for kind in KINDS},
             "thread": None,
             "stop": threading.Event(),
             "initial_done": threading.Event(),
         }
         thread = threading.Thread(
-            target=_run_in_background, args=(session, run), daemon=True
+            target=_run_in_background, args=(session, run, kinds), daemon=True
         )
         session["thread"] = thread
         thread.start()
@@ -68,20 +69,21 @@ def start(
     return session
 
 
-def _run_in_background(session: dict, run: Callable[..., list[dict]]) -> None:
+def _run_in_background(
+    session: dict, run: Callable[..., list[dict]], kinds: tuple[str, ...]
+) -> None:
     """Warm the caches with the initial runs, then rerun on file changes."""
-    _run_initial(session, run)
+    _run_initial(session, run, kinds)
     _watch(session, run)
 
 
-def _run_initial(session: dict, run: Callable[..., list[dict]]) -> None:
-    """Run every kind's commands once, then mark the session idle."""
+def _run_initial(
+    session: dict, run: Callable[..., list[dict]], kinds: tuple[str, ...]
+) -> None:
+    """Run the kinds marked pending at start once, then mark the initial runs done."""
     try:
-        _run_batch(session, run, None, origin="initial")
+        _run_batch(session, run, None, kinds)
     finally:
-        with _LOCK:
-            session["running"] = False
-
         session["initial_done"].set()
 
 
@@ -113,18 +115,61 @@ def _latest_entry(
     }
 
 
+def _outcome_entry(job: dict, ok: bool | None, note: str) -> dict:
+    """Cache entry for a run without results, such as a failed or cancelled one."""
+    entry = _latest_entry(job["kind"], None, job["changed_files"], job["origin"])
+
+    return {**entry, "ok": ok, "note": note}
+
+
+def _run_job(
+    run: Callable[..., list[dict]], cmds: list[dict], files: list[str] | None, job: dict
+) -> dict:
+    """Run a kind's commands into a cache entry; a raising run becomes a failed entry."""
+    try:
+        results = run(cmds, files=files)
+    except Exception as exc:  # noqa: BLE001
+        # Any failure must still publish an outcome, so its pending state is released.
+        return _outcome_entry(job, False, f"{job['kind']} run failed: {exc}")
+
+    return _latest_entry(job["kind"], results, job["changed_files"], job["origin"])
+
+
 def _is_newer(entry: dict, existing: dict) -> bool:
     """True when the given entry ran at or after the cached one."""
     return (existing.get("ran_at") or "") <= (entry.get("ran_at") or "")
 
 
-def _store_latest(session: dict, entry: dict) -> None:
-    """Cache the newer entry per kind; a stale run never overwrites a newer one."""
+def _is_running(session: dict, kind: str) -> bool:
+    """True while a run of the kind is scheduled or in progress; call under _LOCK."""
+    return session["pending"][kind] > 0
+
+
+def _mark_pending(session: dict) -> tuple[str, ...]:
+    """Mark every kind with commands as pending, unless the session is stopping."""
     with _LOCK:
-        existing = session["latest"].get(entry["kind"])
+        if session["stop"].is_set():
+            return ()
+
+        kinds = tuple(kind for kind in KINDS if session["commands"][kind])
+
+        for kind in kinds:
+            session["pending"][kind] += 1
+
+    return kinds
+
+
+def _publish(session: dict, entry: dict) -> None:
+    """Cache the newer entry per kind and release one pending run of that kind."""
+    kind = entry["kind"]
+
+    with _LOCK:
+        existing = session["latest"].get(kind)
 
         if existing is None or _is_newer(entry, existing):
-            session["latest"][entry["kind"]] = entry
+            session["latest"][kind] = entry
+
+        session["pending"][kind] = max(session["pending"][kind] - 1, 0)
 
 
 def _watch(session: dict, run: Callable[..., list[dict]]) -> None:
@@ -135,14 +180,7 @@ def _watch(session: dict, run: Callable[..., list[dict]]) -> None:
         if session["stop"].is_set():
             break
 
-        try:
-            with _LOCK:
-                session["running"] = True
-
-            _run_batch(session, run, batch)
-        finally:
-            with _LOCK:
-                session["running"] = False
+        _run_batch(session, run, batch, _mark_pending(session))
 
 
 def _existing_files(project: str, batch: list[str]) -> list[str] | None:
@@ -156,41 +194,57 @@ def _run_batch(
     session: dict,
     run: Callable[..., list[dict]],
     batch: list[str] | None,
-    origin: str = "watcher",
+    kinds: tuple[str, ...],
 ) -> None:
-    """Run every kind's commands once, for changed files or the whole project."""
+    """Run the pending kinds once, publishing each outcome as it finishes.
+
+    A watcher batch runs on its changed files; a None batch is the initial run.
+    """
     files = _existing_files(session["project"], batch) if batch else None
+    origin = "watcher" if batch else "initial"
 
     def run_kind(kind: str) -> None:
-        cmds = session["commands"][kind]
+        job = {"kind": kind, "changed_files": batch or [], "origin": origin}
 
-        if not cmds or session["stop"].is_set():
-            return
+        if session["stop"].is_set():
+            entry = _outcome_entry(job, None, f"{kind} run cancelled: session stopped")
+        else:
+            entry = _run_job(run, session["commands"][kind], files, job)
 
-        try:
-            results = run(cmds, files=files)
-        except (OSError, ValueError):
-            # A failing kind keeps its previous cache entry, so the other kinds
-            # and the watcher keep running and an empty cache falls back to on-demand.
-            return
-
-        _store_latest(session, _latest_entry(kind, results, batch or [], origin))
+        _publish(session, entry)
 
     with ThreadPoolExecutor(max_workers=len(KINDS)) as executor:
-        list(executor.map(run_kind, KINDS))
+        list(executor.map(run_kind, kinds))
 
 
 def latest(session: dict, kind: str = "lint") -> dict:
-    """The latest cached entry for a kind, with the running flag."""
+    """The latest cached entry for a kind, with that kind's running flag."""
     with _LOCK:
         entry = session["latest"].get(kind) or _default_entry(kind)
 
-        return {**entry, "running": session["running"]}
+        return {**entry, "running": _is_running(session, kind)}
 
 
-def _in_flight_state(entry: dict | None, kind: str) -> dict:
-    """The state to serve while an initial or watcher run is in flight."""
-    return {**(entry or _default_entry(kind)), "running": True}
+def _serve_or_claim(session: dict, kind: str, claim: bool) -> dict | None:
+    """The response to serve now, or None when nothing is cached or in flight.
+
+    A completed run is served as is, including a failed or cancelled one, so it is
+    never retried on demand. With claim, None also marks a new on-demand run pending.
+    """
+    with _LOCK:
+        entry = session["latest"].get(kind)
+        running = _is_running(session, kind)
+
+        if entry is not None:
+            return {**entry, "running": running}
+
+        if running:
+            return {**_default_entry(kind), "running": True}
+
+        if claim:
+            session["pending"][kind] += 1
+
+    return None
 
 
 def run_check(
@@ -208,14 +262,11 @@ def run_check(
 
     with _LOCK:
         session = _SESSIONS.get(key)
-        entry = session["latest"].get(kind) if session else None
-        running = session["running"] if session else False
 
-    if entry is not None:
-        return {**entry, "running": running}
+    served = _serve_or_claim(session, kind, claim=False) if session else None
 
-    if session is not None and running:
-        return _in_flight_state(entry, kind)
+    if served is not None:
+        return served
 
     session_cmds = session["commands"].get(kind) if session else []
     cmds = session_cmds or DETECTORS.get(kind, lambda p: [])(path)
@@ -224,17 +275,21 @@ def run_check(
         return {
             **_default_entry(kind),
             "origin": "none",
-            "running": running,
+            "running": False,
             "note": f"no {kind} commands detected for project",
         }
 
-    results = run(cmds, files=None)
-    entry = _latest_entry(kind, results, files=[], origin="on-demand")
+    job = {"kind": kind, "changed_files": [], "origin": "on-demand"}
 
     if session is None:
-        return {**entry, "running": False}
+        return {**_run_job(run, cmds, None, job), "running": False}
 
-    _store_latest(session, entry)
+    served = _serve_or_claim(session, kind, claim=True)
+
+    if served is not None:
+        return served
+
+    _publish(session, _run_job(run, cmds, None, job))
 
     return latest(session, kind)
 

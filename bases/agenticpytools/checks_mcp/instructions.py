@@ -10,8 +10,11 @@ summary = (
     "session_id), and test(project_full_path, session_id) return the cached "
     "lint, typecheck, and test results when a ready result exists, otherwise "
     "run the commands on demand and return the result; no session required. "
-    "While a background run is in flight and nothing is cached yet, they return "
-    'a placeholder with "running": true; call again later for the result. '
+    'Each result\'s "running" flag covers only that check kind: while a run of '
+    "the kind is scheduled or in progress, they return the previous result, or "
+    'a placeholder without results, with "running": true; call again later. '
+    "A failed or cancelled run returns an entry without results and a note, "
+    "and is not retried until files change or a new session starts. "
     'Results include an "origin" field: "watcher" | "initial" | "on-demand" '
     '(| "none" when no commands of that kind were detected), indicating '
     "whether the watcher already ran them or they ran on demand. "

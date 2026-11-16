@@ -85,7 +85,7 @@ CANNED = {
         "typecheck": CANNED_TYPECHECK_ENTRY,
         "test": CANNED_TEST_ENTRY,
     },
-    "running": False,
+    "pending": {"lint": 0, "typecheck": 0, "test": 0},
     "thread": None,
 }
 

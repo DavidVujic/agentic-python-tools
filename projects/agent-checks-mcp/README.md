@@ -13,6 +13,8 @@ The Checks MCP watches a project in the background and keeps lint, typecheck, an
 - `test` — latest cached test results for the session; runs the tests on demand if not ready.
 - `stop_watching` — stop watching a project session; the watcher thread exits.
 
+Each `lint`, `typecheck`, and `test` result has a `running` flag that covers only that check kind. While a run of the kind is in progress, the tool returns the previous result (or a placeholder without results) with `running: true`, instead of waiting. A failed or cancelled run returns an entry without results and a `note`, and is not retried until files change or a new session starts.
+
 ## Setup
 
 ### Add the MCP server to your harness
