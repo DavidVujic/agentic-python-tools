@@ -225,26 +225,63 @@ def latest(session: dict, kind: str = "lint") -> dict:
         return {**entry, "running": _is_running(session, kind)}
 
 
-def _serve_or_claim(session: dict, kind: str, claim: bool) -> dict | None:
+def _served_entry(session: dict, kind: str) -> dict | None:
     """The response to serve now, or None when nothing is cached or in flight.
 
     A completed run is served as is, including a failed or cancelled one, so it is
-    never retried on demand. With claim, None also marks a new on-demand run pending.
+    never retried on demand. Call under _LOCK.
     """
-    with _LOCK:
-        entry = session["latest"].get(kind)
-        running = _is_running(session, kind)
+    entry = session["latest"].get(kind)
+    running = _is_running(session, kind)
 
-        if entry is not None:
-            return {**entry, "running": running}
+    if entry is not None:
+        return {**entry, "running": running}
 
-        if running:
-            return {**_default_entry(kind), "running": True}
-
-        if claim:
-            session["pending"][kind] += 1
+    if running:
+        return {**_default_entry(kind), "running": True}
 
     return None
+
+
+def _serve(session: dict, kind: str) -> dict | None:
+    """The response to serve now, or None when nothing is cached or in flight."""
+    with _LOCK:
+        return _served_entry(session, kind)
+
+
+def _claim(key: str, session: dict, kind: str) -> tuple[dict | None, bool]:
+    """The response to serve now, and whether a new on-demand run was claimed.
+
+    A stopped or replaced session serves nothing and claims nothing.
+    """
+    with _LOCK:
+        if _SESSIONS.get(key) is not session or session["stop"].is_set():
+            return None, False
+
+        served = _served_entry(session, kind)
+
+        if served is None:
+            session["pending"][kind] += 1
+
+    return served, served is None
+
+
+def _detect(path: Path, kind: str) -> list[dict]:
+    """The kind's commands detected for a project."""
+    return DETECTORS.get(kind, lambda p: [])(path)
+
+
+def _run_unclaimed(run: Callable[..., list[dict]], cmds: list[dict], job: dict) -> dict:
+    """Run commands outside any session, or note that none were detected."""
+    if not cmds:
+        return {
+            **_default_entry(job["kind"]),
+            "origin": "none",
+            "running": False,
+            "note": f"no {job['kind']} commands detected for project",
+        }
+
+    return {**_run_job(run, cmds, None, job), "running": False}
 
 
 def run_check(
@@ -263,31 +300,25 @@ def run_check(
     with _LOCK:
         session = _SESSIONS.get(key)
 
-    served = _serve_or_claim(session, kind, claim=False) if session else None
+    served = _serve(session, kind) if session else None
 
     if served is not None:
         return served
 
     session_cmds = session["commands"].get(kind) if session else []
-    cmds = session_cmds or DETECTORS.get(kind, lambda p: [])(path)
-
-    if not cmds:
-        return {
-            **_default_entry(kind),
-            "origin": "none",
-            "running": False,
-            "note": f"no {kind} commands detected for project",
-        }
-
+    cmds = session_cmds or _detect(path, kind)
     job = {"kind": kind, "changed_files": [], "origin": "on-demand"}
 
-    if session is None:
-        return {**_run_job(run, cmds, None, job), "running": False}
+    if session is None or not cmds:
+        return _run_unclaimed(run, cmds, job)
 
-    served = _serve_or_claim(session, kind, claim=True)
+    served, claimed = _claim(key, session, kind)
 
     if served is not None:
         return served
+
+    if not claimed:
+        return _run_unclaimed(run, _detect(path, kind), job)
 
     _publish(session, _run_job(run, cmds, None, job))
 
