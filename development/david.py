@@ -2,9 +2,11 @@ import uuid
 from pathlib import Path
 
 from agenticpytools import storage
-from agenticpytools.repl_mcp import core
+from agenticpytools.checks_mcp import core as checks_mcp
+from agenticpytools.repl_mcp import core as repl_mcp
 
-project_full_path = (Path.cwd().parent / "python-hiccup").as_posix()
+hiccup_full_path = (Path.cwd().parent / "python-hiccup").as_posix()
+poly_full_path = (Path.cwd().parent / "python-polylith").as_posix()
 project_name = "python-repl-mcp"
 session_id = str(uuid.uuid4())
 
@@ -58,7 +60,7 @@ sqlite3 "$HOME/.python-repl-mcp/kernels.db" 'DELETE FROM kernels;'
 
 
 def run():
-    return core.run(data, project_full_path, session_id)
+    return repl_mcp.run(data, hiccup_full_path, session_id)
 
 
 def list():
@@ -66,4 +68,28 @@ def list():
 
 
 def close():
-    return core.close(project_full_path, session_id)
+    return repl_mcp.close(hiccup_full_path, session_id)
+
+
+def start_checks(path: str):
+    return checks_mcp.start_watching(path, session_id)
+
+
+def stop_checks(path: str):
+    return checks_mcp.stop_watching(path, session_id)
+
+
+def lint_results(path: str):
+    return checks_mcp.lint(path, session_id)
+
+
+def typecheck_results(path: str):
+    return checks_mcp.typecheck(path, session_id)
+
+
+def test_results(path: str):
+    return checks_mcp.test(path, session_id)
+
+
+def check_commands(path: str):
+    return checks_mcp.detected_commands(path, session_id)

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling", "hatch-polylith-bricks"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-checks-mcp"
+version = "0.0.1"
+description = "An MCP server that watches a project and serves cached lint, typecheck, and test results"
+authors = [{ name = "David Vujic" }]
+repository = "https://github.com/DavidVujic/agentic-python-tools"
+license = "MIT"
+readme = "README.md"
+
+requires-python = ">=3.12"
+dependencies = ["fastmcp", "watchfiles"]
+
+[project.scripts]
+agent-checks-mcp = "agent_checks_mcp.agenticpytools.checks_mcp.core:main"
+
+[tool.hatch.build.hooks.polylith-bricks]
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent_checks_mcp"]
+
+[tool.polylith.build]
+top-namespace = "agent_checks_mcp"
+
+[tool.polylith.bricks]
+"../../bases/agenticpytools/checks_mcp" = "agenticpytools/checks_mcp"
+"../../components/agenticpytools/checks" = "agenticpytools/checks"
+"../../components/agenticpytools/environment" = "agenticpytools/environment"
+"../../components/agenticpytools/linter" = "agenticpytools/linter"
+"../../components/agenticpytools/runner" = "agenticpytools/runner"
+"../../components/agenticpytools/session" = "agenticpytools/session"
+"../../components/agenticpytools/tester" = "agenticpytools/tester"
+"../../components/agenticpytools/typechecker" = "agenticpytools/typechecker"
+"../../components/agenticpytools/watcher" = "agenticpytools/watcher"

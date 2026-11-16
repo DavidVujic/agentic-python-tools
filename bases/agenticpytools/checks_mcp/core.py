@@ -1,0 +1,122 @@
+"""MCP server: watch a project and serve cached lint, typecheck, and test results."""
+
+from pathlib import Path
+
+from agenticpytools import session as sessions
+from agenticpytools.checks_mcp.instructions import summary
+from agenticpytools.linter import detect_lint_commands
+from agenticpytools.session import SESSION_ID_ERROR_MESSAGE
+from agenticpytools.tester import detect_test_commands
+from agenticpytools.typechecker import detect_typecheck_commands
+from fastmcp import FastMCP
+
+EMPTY_SESSION_ID_ERROR = {"error": SESSION_ID_ERROR_MESSAGE}
+
+mcp = FastMCP(name="checks-mcp", instructions=summary)
+
+
+@mcp.tool
+def start_watching(project_full_path: str, session_id: str) -> dict:
+    """Start watching a project without waiting for checks; returns its detected commands."""
+    if not session_id.strip():
+        return {**EMPTY_SESSION_ID_ERROR}
+
+    try:
+        session = sessions.start(Path(project_full_path), session_id)
+
+        return {
+            "project": session["project"],
+            "session_id": session_id,
+            "watching": True,
+            "commands": sessions.commands(session),
+        }
+    except (OSError, ValueError) as exc:
+        return {"error": f"failed to start watching: {exc}"}
+
+
+@mcp.tool
+def detected_commands(project_full_path: str, session_id: str) -> dict:
+    """The lint, typecheck, and test commands for a watched session, detected on demand otherwise."""
+    if not session_id.strip():
+        return {**EMPTY_SESSION_ID_ERROR}
+
+    try:
+        session = sessions.get(Path(project_full_path), session_id)
+
+        if session is not None:
+            return sessions.commands(session)
+
+        path = Path(project_full_path)
+
+        return {
+            "lint": detect_lint_commands(path),
+            "typecheck": detect_typecheck_commands(path),
+            "test": detect_test_commands(path),
+        }
+    except (OSError, ValueError) as exc:
+        return {"error": f"failed to detect commands: {exc}"}
+
+
+@mcp.tool
+def lint(project_full_path: str, session_id: str) -> dict:
+    """Latest cached lint results for the session; runs lint on demand if not ready."""
+    if not session_id.strip():
+        return {**EMPTY_SESSION_ID_ERROR}
+
+    try:
+        return sessions.lint(Path(project_full_path), session_id)
+    except (OSError, ValueError) as exc:
+        return {"error": f"failed to run lint: {exc}"}
+
+
+@mcp.tool
+def typecheck(project_full_path: str, session_id: str) -> dict:
+    """Latest cached typecheck results for the session; runs typecheck on demand if not ready."""
+    if not session_id.strip():
+        return {**EMPTY_SESSION_ID_ERROR}
+
+    try:
+        return sessions.run_check(Path(project_full_path), session_id, "typecheck")
+    except (OSError, ValueError) as exc:
+        return {"error": f"failed to run typecheck: {exc}"}
+
+
+@mcp.tool
+def test(project_full_path: str, session_id: str) -> dict:
+    """Latest cached test results for the session; runs the tests on demand if not ready."""
+    if not session_id.strip():
+        return {**EMPTY_SESSION_ID_ERROR}
+
+    try:
+        return sessions.run_check(Path(project_full_path), session_id, "test")
+    except (OSError, ValueError) as exc:
+        return {"error": f"failed to run tests: {exc}"}
+
+
+@mcp.tool
+def stop_watching(project_full_path: str, session_id: str) -> dict:
+    """Stop watching a project session; the watcher thread exits."""
+    if not session_id.strip():
+        return {**EMPTY_SESSION_ID_ERROR}
+
+    try:
+        stopped = sessions.stop(Path(project_full_path), session_id)
+    except (OSError, ValueError) as exc:
+        return {"error": f"failed to stop watching: {exc}"}
+
+    if not stopped:
+        return {"error": "no session for this project_full_path/session_id"}
+
+    return {
+        "project": str(Path(project_full_path).expanduser().resolve()),
+        "session_id": session_id,
+        "stopped": True,
+    }
+
+
+def main() -> None:
+    mcp.run()
+
+
+if __name__ == "__main__":
+    main()
