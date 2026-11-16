@@ -20,16 +20,19 @@ LINTERS: dict[str, Tool] = {
         "section_prefixes": ["tool.pylint"],
         "files": [".pylintrc", "pylintrc"],
         "takes_files": True,
+        "project_args": ["."],
     },
     "black": {
         "argvs": [["--check", "."]],
         "sections": ["tool.black"],
         "takes_files": True,
+        "project_args": ["."],
     },
     "isort": {
         "argvs": [["--check-only", "."]],
         "sections": ["tool.isort"],
         "takes_files": True,
+        "project_args": ["."],
     },
 }
 

@@ -8,7 +8,7 @@ TEST_TOOLS: dict[str, Tool] = {
         "sections": ["tool.pytest.ini_options"],
         "ini_sections": ["pytest", "tool:pytest"],
         "files": ["pytest.ini"],
-        "takes_files": True,
+        "takes_files": False,
     },
     "tox": {
         "argvs": [[]],

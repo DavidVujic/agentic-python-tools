@@ -3,11 +3,15 @@
 summary = (
     "An MCP server that watches a target project during an agent session. "
     "Every tool takes project_full_path and session_id. "
-    "Call start_watching(project_full_path, session_id) once per session. "
+    "Call start_watching(project_full_path, session_id) once per session; it "
+    "returns at once with the detected commands, without check results, while "
+    "the initial lint, typecheck, and test runs continue in the background. "
     "Then lint(project_full_path, session_id), typecheck(project_full_path, "
     "session_id), and test(project_full_path, session_id) return the cached "
     "lint, typecheck, and test results when a ready result exists, otherwise "
     "run the commands on demand and return the result; no session required. "
+    "While a background run is in flight and nothing is cached yet, they return "
+    'a placeholder with "running": true; call again later for the result. '
     'Results include an "origin" field: "watcher" | "initial" | "on-demand" '
     '(| "none" when no commands of that kind were detected), indicating '
     "whether the watcher already ran them or they ran on demand. "

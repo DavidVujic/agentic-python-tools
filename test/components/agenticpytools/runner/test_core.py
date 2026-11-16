@@ -75,6 +75,34 @@ def test_files_appended_when_tool_takes_files():
     assert results[0]["stdout"].strip() == "['a.py', 'b.py']"
 
 
+def _echo_args_command(*args: str) -> dict:
+    """A takes-files command printing its args, with '.' as its project args."""
+    code = "import sys; print(sys.argv[1:])"
+    argv = [sys.executable, "-c", code, *args]
+
+    return {"argv": argv, "cwd": None, "takes_files": True, "project_args": ["."]}
+
+
+def test_project_args_replaced_by_files():
+    results = run_commands([_echo_args_command("--check", ".")], files=["a.py"])
+
+    assert results[0]["stdout"].strip() == "['--check', 'a.py']"
+    assert results[0]["argv"][-2:] == ["--check", "a.py"]
+
+
+@pytest.mark.parametrize("files", [None, []], ids=["none", "empty"])
+def test_project_args_kept_without_files(files):
+    results = run_commands([_echo_args_command("--check", ".")], files=files)
+
+    assert results[0]["stdout"].strip() == "['--check', '.']"
+
+
+def test_project_args_not_stripped_when_not_trailing():
+    results = run_commands([_echo_args_command(".", "src")], files=["a.py"])
+
+    assert results[0]["stdout"].strip() == "['.', 'src', 'a.py']"
+
+
 def test_files_not_appended_without_takes_files():
     code = "import sys; print(sys.argv[1:])"
     commands = [_python_command(code), _python_command(code, takes_files=False)]

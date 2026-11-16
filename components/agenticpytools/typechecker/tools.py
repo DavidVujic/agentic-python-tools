@@ -9,6 +9,7 @@ TYPE_CHECKERS: dict[str, Tool] = {
         "ini_sections": ["mypy"],
         "files": ["mypy.ini", ".mypy.ini"],
         "takes_files": True,
+        "project_args": ["."],
     },
     "ty": {"argvs": [["check"]], "sections": ["tool.ty"], "takes_files": True},
     "pyright": {"argvs": [[]], "sections": ["tool.pyright"], "takes_files": True},

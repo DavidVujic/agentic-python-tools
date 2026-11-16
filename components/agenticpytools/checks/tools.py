@@ -14,6 +14,7 @@ class Tool(TypedDict, total=False):
     ini_sections: list[str]
     files: list[str]
     takes_files: bool
+    project_args: list[str]
 
 
 def normalize_dep_name(dep: str) -> str:

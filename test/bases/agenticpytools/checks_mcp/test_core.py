@@ -1,6 +1,7 @@
 """Unit tests for the checks MCP server tools."""
 
 from pathlib import Path
+from threading import Event
 
 import pytest
 from agenticpytools import session as sessions
@@ -106,24 +107,48 @@ def _fake_run(calls: list):
     return run
 
 
-def test_start_watching(monkeypatch):
+def test_start_watching_returns_metadata_only(monkeypatch):
     monkeypatch.setattr(sessions, "start", lambda project, session_id: CANNED)
 
     result = start_watching("/p", "s1")
 
-    assert result["project"] == "/p"
-    assert result["session_id"] == "s1"
-    assert result["watching"] is True
-    assert result["commands"] == {
-        "lint": [CANNED_COMMAND],
-        "typecheck": [CANNED_TYPECHECK_COMMAND],
-        "test": [CANNED_TEST_COMMAND],
+    assert result == {
+        "project": "/p",
+        "session_id": "s1",
+        "watching": True,
+        "commands": {
+            "lint": [CANNED_COMMAND],
+            "typecheck": [CANNED_TYPECHECK_COMMAND],
+            "test": [CANNED_TEST_COMMAND],
+        },
     }
-    assert result["initial"] == {
-        "lint": {**CANNED_LINT_ENTRY, "running": False},
-        "typecheck": {**CANNED_TYPECHECK_ENTRY, "running": False},
-        "test": {**CANNED_TEST_ENTRY, "running": False},
-    }
+
+
+def test_start_watching_returns_while_initial_runs_are_blocked(tmp_path, monkeypatch):
+    entered, release = Event(), Event()
+
+    def blocking_run(commands, files=None, timeout=60.0):
+        entered.set()
+        release.wait(timeout=5)
+
+        return [CANNED_RESULT]
+
+    monkeypatch.setitem(DETECTORS, "lint", lambda project: [CANNED_COMMAND])
+    monkeypatch.setitem(DETECTORS, "typecheck", lambda project: [])
+    monkeypatch.setitem(DETECTORS, "test", lambda project: [CANNED_TEST_COMMAND])
+    monkeypatch.setattr("agenticpytools.session.core.run_commands", blocking_run)
+
+    try:
+        result = start_watching(str(tmp_path), "s1")
+
+        assert entered.wait(timeout=5)
+        assert set(result) == {"project", "session_id", "watching", "commands"}
+        assert result["watching"] is True
+        assert result["commands"]["test"] == [CANNED_TEST_COMMAND]
+        assert lint(str(tmp_path), "s1")["running"] is True
+    finally:
+        release.set()
+        stop_watching(str(tmp_path), "s1")
 
 
 def test_start_watching_error(monkeypatch):

@@ -11,12 +11,25 @@ def run_commands(
     return [_run_one(cmd, files, timeout) for cmd in commands]
 
 
-def _run_one(cmd: dict, files: list[str] | None, timeout: float) -> dict:
-    """One command's result: argv, returncode, stdout, and stderr."""
+def _argv(cmd: dict, files: list[str] | None) -> list[str]:
+    """The command's argv, with changed files replacing its declared project args."""
     argv = list(cmd["argv"])
 
-    if files and cmd.get("takes_files"):
-        argv += [str(f) for f in files]
+    if not (files and cmd.get("takes_files")):
+        return argv
+
+    project_args = list(cmd.get("project_args", []))
+    size = len(project_args)
+
+    if size and argv[-size:] == project_args:
+        argv = argv[:-size]
+
+    return argv + [str(f) for f in files]
+
+
+def _run_one(cmd: dict, files: list[str] | None, timeout: float) -> dict:
+    """One command's result: argv, returncode, stdout, and stderr."""
+    argv = _argv(cmd, files)
 
     try:
         proc = subprocess.run(

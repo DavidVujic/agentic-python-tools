@@ -36,7 +36,7 @@ def _session_key(project: Path, session_id: str) -> str:
 def start(
     project: Path, session_id: str, run: Callable[..., list[dict]] | None = None
 ) -> dict:
-    """Start watching a project's check commands; idempotent per session."""
+    """Start watching a project without waiting for checks; idempotent per session."""
     if run is None:
         run = run_commands
 
@@ -47,48 +47,42 @@ def start(
         if key in _SESSIONS:
             return _SESSIONS[key]
 
+        detected = {kind: DETECTORS[kind](path) for kind in KINDS}
         session = {
             "project": str(path),
             "session_id": session_id,
-            "commands": {kind: DETECTORS[kind](path) for kind in KINDS},
+            "commands": detected,
             "latest": {},
-            "running": True,
+            "running": any(detected.values()),
             "thread": None,
             "stop": threading.Event(),
+            "initial_done": threading.Event(),
         }
-        _SESSIONS[key] = session
-
-    try:
-        _run_initial(session, run)
-    except Exception:
-        with _LOCK:
-            _SESSIONS.pop(key, None)
-            session["running"] = False
-
-        raise
-
-    with _LOCK:
-        session["running"] = False
-        thread = threading.Thread(target=_watch, args=(session, run), daemon=True)
+        thread = threading.Thread(
+            target=_run_in_background, args=(session, run), daemon=True
+        )
         session["thread"] = thread
-
-        try:
-            thread.start()
-        except Exception:
-            _SESSIONS.pop(key, None)
-            raise
+        thread.start()
+        _SESSIONS[key] = session
 
     return session
 
 
-def _run_initial(session: dict, run: Callable[..., list[dict]]) -> None:
-    """Run every kind's commands once at session start."""
-    for kind in KINDS:
-        cmds = session["commands"][kind]
+def _run_in_background(session: dict, run: Callable[..., list[dict]]) -> None:
+    """Warm the caches with the initial runs, then rerun on file changes."""
+    _run_initial(session, run)
+    _watch(session, run)
 
-        if cmds:
-            results = run(cmds, files=None)
-            _store_latest(session, _latest_entry(kind, results, [], origin="initial"))
+
+def _run_initial(session: dict, run: Callable[..., list[dict]]) -> None:
+    """Run every kind's commands once, then mark the session idle."""
+    try:
+        _run_batch(session, run, None, origin="initial")
+    finally:
+        with _LOCK:
+            session["running"] = False
+
+        session["initial_done"].set()
 
 
 def _default_entry(kind: str) -> dict:
@@ -151,18 +145,36 @@ def _watch(session: dict, run: Callable[..., list[dict]]) -> None:
                 session["running"] = False
 
 
-def _run_batch(session: dict, run: Callable[..., list[dict]], batch: list[str]) -> None:
-    """Run every kind's commands once for a batch of changed files."""
+def _existing_files(project: str, batch: list[str]) -> list[str] | None:
+    """The batch's files that still exist; None runs on the whole project."""
+    existing = [f for f in batch if (Path(project) / f).is_file()]
+
+    return existing or None
+
+
+def _run_batch(
+    session: dict,
+    run: Callable[..., list[dict]],
+    batch: list[str] | None,
+    origin: str = "watcher",
+) -> None:
+    """Run every kind's commands once, for changed files or the whole project."""
+    files = _existing_files(session["project"], batch) if batch else None
 
     def run_kind(kind: str) -> None:
         cmds = session["commands"][kind]
 
-        if cmds:
-            results = run(cmds, files=batch)
-            _store_latest(
-                session,
-                _latest_entry(kind, results, batch, origin="watcher"),
-            )
+        if not cmds or session["stop"].is_set():
+            return
+
+        try:
+            results = run(cmds, files=files)
+        except (OSError, ValueError):
+            # A failing kind keeps its previous cache entry, so the other kinds
+            # and the watcher keep running and an empty cache falls back to on-demand.
+            return
+
+        _store_latest(session, _latest_entry(kind, results, batch or [], origin))
 
     with ThreadPoolExecutor(max_workers=len(KINDS)) as executor:
         list(executor.map(run_kind, KINDS))
@@ -177,7 +189,7 @@ def latest(session: dict, kind: str = "lint") -> dict:
 
 
 def _in_flight_state(entry: dict | None, kind: str) -> dict:
-    """The state to serve while a watcher run is in flight."""
+    """The state to serve while an initial or watcher run is in flight."""
     return {**(entry or _default_entry(kind)), "running": True}
 
 
@@ -219,10 +231,12 @@ def run_check(
     results = run(cmds, files=None)
     entry = _latest_entry(kind, results, files=[], origin="on-demand")
 
-    if session is not None:
-        _store_latest(session, entry)
+    if session is None:
+        return {**entry, "running": False}
 
-    return {**entry, "running": running}
+    _store_latest(session, entry)
+
+    return latest(session, kind)
 
 
 def lint(
@@ -244,7 +258,7 @@ def get(project: Path, session_id: str) -> dict | None:
 
 
 def stop(project: Path, session_id: str) -> bool:
-    """Stop a session's watcher and remove it; False when no session exists."""
+    """Stop a session's background runs and watcher and remove it; False when no session exists."""
     key = _session_key(project, session_id)
 
     with _LOCK:

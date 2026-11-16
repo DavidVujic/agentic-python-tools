@@ -5,7 +5,7 @@ from pathlib import Path
 from agenticpytools import session as sessions
 from agenticpytools.checks_mcp.instructions import summary
 from agenticpytools.linter import detect_lint_commands
-from agenticpytools.session import KINDS, SESSION_ID_ERROR_MESSAGE
+from agenticpytools.session import SESSION_ID_ERROR_MESSAGE
 from agenticpytools.tester import detect_test_commands
 from agenticpytools.typechecker import detect_typecheck_commands
 from fastmcp import FastMCP
@@ -17,7 +17,7 @@ mcp = FastMCP(name="checks-mcp", instructions=summary)
 
 @mcp.tool
 def start_watching(project_full_path: str, session_id: str) -> dict:
-    """Start watching a project; returns its commands and initial check results."""
+    """Start watching a project without waiting for checks; returns its detected commands."""
     if not session_id.strip():
         return {**EMPTY_SESSION_ID_ERROR}
 
@@ -29,7 +29,6 @@ def start_watching(project_full_path: str, session_id: str) -> dict:
             "session_id": session_id,
             "watching": True,
             "commands": sessions.commands(session),
-            "initial": {kind: sessions.latest(session, kind) for kind in KINDS},
         }
     except (OSError, ValueError) as exc:
         return {"error": f"failed to start watching: {exc}"}

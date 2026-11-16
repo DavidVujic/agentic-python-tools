@@ -15,14 +15,18 @@ MAKEFILES = ("Makefile", "GNUmakefile")
 INI_FILES = ("setup.cfg", "tox.ini")
 
 
-def _command(
-    argv: list[str], source: str, tool: str, takes_files: bool = False
-) -> dict:
-    """A detected command; detect_commands adds the cwd."""
+def _command(argv: list[str], source: str, tool: str, spec: Tool | None = None) -> dict:
+    """A detected command with the spec's file handling; detect_commands adds the cwd."""
     command = {"argv": argv, "source": source, "tool": tool}
+    spec = spec or {}
 
-    if takes_files:
-        command["takes_files"] = True
+    if not spec.get("takes_files", False):
+        return command
+
+    command["takes_files"] = True
+
+    if spec.get("project_args"):
+        command["project_args"] = list(spec["project_args"])
 
     return command
 
@@ -179,12 +183,7 @@ def pyproject_tool_commands(
     data = _read_pyproject(project)
 
     return [
-        _command(
-            prefix + [name] + args,
-            source,
-            name,
-            takes_files=tools[name].get("takes_files", False),
-        )
+        _command(prefix + [name] + args, source, name, tools[name])
         for name, source in _detected_tools(project, data, tools)
         for args in tools[name]["argvs"]
     ]
@@ -288,7 +287,7 @@ def venv_commands(project: Path, tools: dict[str, Tool]) -> list[dict]:
             [python, "-m", tools[name].get("module", name)] + args,
             "venv",
             name,
-            takes_files=tools[name].get("takes_files", False),
+            tools[name],
         )
         for name in tools
         if name in installed

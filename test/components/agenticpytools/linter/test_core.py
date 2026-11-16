@@ -156,6 +156,36 @@ def test_venv_found_through_symlinked_project_dir(tmp_path, monkeypatch):
     assert commands[0]["source"] == "venv"
 
 
+@pytest.mark.parametrize(
+    ("tool", "argv"),
+    [
+        ("pylint", ["uv", "run", "pylint", "."]),
+        ("black", ["uv", "run", "black", "--check", "."]),
+        ("isort", ["uv", "run", "isort", "--check-only", "."]),
+    ],
+    ids=["pylint", "black", "isort"],
+)
+def test_project_target_declared_as_project_args(tmp_path, monkeypatch, tool, argv):
+    _patch_which(monkeypatch, {"uv"})
+    (tmp_path / "uv.lock").touch()
+    (tmp_path / "pyproject.toml").write_text(f'[dependency-groups]\ndev = ["{tool}"]\n')
+
+    commands = detect_lint_commands(tmp_path)
+
+    assert [c["argv"] for c in commands] == [argv]
+    assert commands[0]["project_args"] == ["."]
+
+
+def test_venv_command_declares_project_args(tmp_path, monkeypatch):
+    _patch_which(monkeypatch, set())
+    _fake_venv(tmp_path, "black")
+
+    commands = detect_lint_commands(tmp_path)
+
+    assert commands[0]["argv"][-2:] == ["--check", "."]
+    assert commands[0]["project_args"] == ["."]
+
+
 def test_no_lint_commands(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv", "just", "make", "poe", "pixi", "hatch"})
 

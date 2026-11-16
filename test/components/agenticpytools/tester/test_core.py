@@ -1,8 +1,10 @@
 """Unit tests for test command detection."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from agenticpytools.runner import run_commands
 from agenticpytools.tester.core import detect_test_commands
 
 pytestmark = pytest.mark.tester
@@ -61,6 +63,32 @@ def test_uv_project_with_pytest_dependency(tmp_path, monkeypatch):
 
     assert [c["argv"] for c in commands] == [["uv", "run", "pytest"]]
     assert commands[0]["source"] == "pyproject"
+
+
+@pytest.mark.parametrize(
+    "changed", ["components/pkg/module.py", "test/pkg/test_module.py"]
+)
+def test_pytest_runs_whole_suite_for_changed_files(tmp_path, monkeypatch, changed):
+    _patch_which(monkeypatch, {"uv"})
+    (tmp_path / "uv.lock").touch()
+    (tmp_path / "pyproject.toml").write_text('[dependency-groups]\ndev = ["pytest"]\n')
+    argvs: list = []
+
+    def fake_subprocess_run(argv, **kwargs):
+        argvs.append(argv)
+
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "agenticpytools.runner.core.subprocess.run", fake_subprocess_run
+    )
+
+    commands = detect_test_commands(tmp_path)
+    results = run_commands(commands, files=[changed])
+
+    assert "takes_files" not in commands[0]
+    assert argvs == [["uv", "run", "pytest"]]
+    assert results[0]["argv"] == ["uv", "run", "pytest"]
 
 
 def test_pytest_config_marker_with_uv_prefix(tmp_path, monkeypatch):
