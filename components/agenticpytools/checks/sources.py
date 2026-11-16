@@ -8,7 +8,12 @@ import tomllib
 from pathlib import Path
 
 from agenticpytools.checks.tools import Tool, dependency_names, normalize_dep_name
-from agenticpytools.environment import project_tool, venv_dir, venv_python
+from agenticpytools.environment import (
+    dotted_keys,
+    project_tool,
+    venv_dir,
+    venv_python,
+)
 
 JUSTFILES = ("justfile", "Justfile", ".justfile")
 MAKEFILES = ("Makefile", "GNUmakefile")
@@ -38,17 +43,6 @@ def _read_pyproject(project: Path) -> dict | None:
             return tomllib.load(file)
     except (FileNotFoundError, tomllib.TOMLDecodeError):
         return None
-
-
-def _dotted_keys(table: dict) -> set[str]:
-    """Dotted keys of nested tables, e.g. 'tool.ruff' for [tool.ruff]."""
-    keys = set(table)
-
-    for key, value in table.items():
-        if isinstance(value, dict):
-            keys |= {f"{key}.{nested}" for nested in _dotted_keys(value)}
-
-    return keys
 
 
 def _first_file(project: Path, names: tuple[str, ...]) -> Path | None:
@@ -116,7 +110,7 @@ def pyproject_task_commands(project: Path, recipe_names: tuple[str, ...]) -> lis
 
     return [
         *_poe_commands(tables.get("poe", {}), manager, recipe_names),
-        *_pixi_commands(tables.get("pixi", {}), manager, recipe_names),
+        *_pixi_commands(tables.get("pixi", {}), recipe_names),
         *_hatch_commands(tables.get("hatch", {}), recipe_names),
     ]
 
@@ -137,24 +131,14 @@ def _poe_commands(
     return [_command(prefix + ["poe", task], "pyproject-task", "poe")]
 
 
-def _pixi_commands(
-    pixi: dict, manager: dict | None, recipe_names: tuple[str, ...]
-) -> list[dict]:
-    """Command from a pixi task."""
+def _pixi_commands(pixi: dict, recipe_names: tuple[str, ...]) -> list[dict]:
+    """Command from a pixi task, when pixi is installed."""
     task = _task_name(pixi.get("tasks", {}), recipe_names)
 
-    if task is None:
-        return []
-
-    if not _pixi_available(manager):
+    if task is None or shutil.which("pixi") is None:
         return []
 
     return [_command(["pixi", "run", task], "pyproject-task", "pixi")]
-
-
-def _pixi_available(manager: dict | None) -> bool:
-    """Whether pixi is installed or is the project's tool manager."""
-    return shutil.which("pixi") is not None or (manager or {}).get("tool") == "pixi"
 
 
 def _hatch_commands(hatch: dict, recipe_names: tuple[str, ...]) -> list[dict]:
@@ -193,7 +177,7 @@ def _detected_tools(
     project: Path, data: dict | None, tools: dict[str, Tool]
 ) -> list[tuple[str, str]]:
     """Detected tools as (name, source) pairs in table order."""
-    sections = _dotted_keys(data or {})
+    sections = dotted_keys(data or {})
     ini = _ini_section_names(project)
     dep_tools = {name for name in dependency_names(data or {}) if name in tools}
     configured = {

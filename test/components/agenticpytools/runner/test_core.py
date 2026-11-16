@@ -5,7 +5,7 @@ import os
 import sys
 
 import pytest
-from agenticpytools.runner import run_commands, summarize
+from agenticpytools.runner import run_commands
 
 pytestmark = pytest.mark.runner
 
@@ -133,12 +133,3 @@ def test_order_preserved():
     results = run_commands(commands)
 
     assert [r["stdout"].strip() for r in results] == ["first", "second"]
-
-
-def test_summarize():
-    results = [
-        {"argv": ["ruff", "check"], "returncode": 0, "stdout": "", "stderr": ""},
-        {"argv": ["pytest"], "returncode": 1, "stdout": "", "stderr": ""},
-    ]
-
-    assert summarize(results) == ["ok (0): ruff check", "FAIL (1): pytest"]

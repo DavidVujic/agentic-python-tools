@@ -1,6 +1,6 @@
 """Type checker tools: argvs and config markers."""
 
-from agenticpytools.checks.tools import Tool, dependency_names, normalize_dep_name
+from agenticpytools.checks.tools import Tool
 
 TYPE_CHECKERS: dict[str, Tool] = {
     "mypy": {
@@ -14,5 +14,3 @@ TYPE_CHECKERS: dict[str, Tool] = {
     "ty": {"argvs": [["check"]], "sections": ["tool.ty"], "takes_files": True},
     "pyright": {"argvs": [[]], "sections": ["tool.pyright"], "takes_files": True},
 }
-
-__all__ = ["TYPE_CHECKERS", "Tool", "dependency_names", "normalize_dep_name"]

@@ -6,6 +6,13 @@ from agenticpytools.environment.core import (
     venv_dir,
     venv_python,
 )
-from agenticpytools.environment.tools import project_tool
+from agenticpytools.environment.tools import dotted_keys, project_tool
 
-__all__ = ["is_uv", "is_windows", "project_tool", "venv_dir", "venv_python"]
+__all__ = [
+    "dotted_keys",
+    "is_uv",
+    "is_windows",
+    "project_tool",
+    "venv_dir",
+    "venv_python",
+]

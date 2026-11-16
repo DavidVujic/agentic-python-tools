@@ -24,6 +24,7 @@ def test_uv_project_with_ty_dependency(tmp_path, monkeypatch):
     commands = detect_typecheck_commands(tmp_path)
 
     assert [c["argv"] for c in commands] == [["uv", "run", "ty", "check"]]
+    assert "project_args" not in commands[0]
 
 
 def test_uv_project_with_mypy_section(tmp_path, monkeypatch):
@@ -35,16 +36,6 @@ def test_uv_project_with_mypy_section(tmp_path, monkeypatch):
 
     assert [c["argv"] for c in commands] == [["uv", "run", "mypy", "."]]
     assert [c.get("project_args") for c in commands] == [["."]]
-
-
-def test_ty_has_no_project_args(tmp_path, monkeypatch):
-    _patch_which(monkeypatch, {"uv"})
-    (tmp_path / "uv.lock").touch()
-    (tmp_path / "pyproject.toml").write_text('[dependency-groups]\ndev = ["ty"]\n')
-
-    commands = detect_typecheck_commands(tmp_path)
-
-    assert "project_args" not in commands[0]
 
 
 def test_uv_project_with_pyright_dependency(tmp_path, monkeypatch):

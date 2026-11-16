@@ -13,13 +13,13 @@ PROJECT_TOOLS = (
 )
 
 
-def _dotted_keys(table: dict) -> set[str]:
+def dotted_keys(table: dict) -> set[str]:
     """Dotted keys of nested tables, e.g. 'tool.uv' for [tool.uv]."""
     keys = set(table)
 
     for key, value in table.items():
         if isinstance(value, dict):
-            keys |= {f"{key}.{nested}" for nested in _dotted_keys(value)}
+            keys |= {f"{key}.{nested}" for nested in dotted_keys(value)}
 
     return keys
 
@@ -32,7 +32,7 @@ def _pyproject_sections(project: Path) -> set[str]:
     except (FileNotFoundError, tomllib.TOMLDecodeError):
         return set()
 
-    return _dotted_keys(data)
+    return dotted_keys(data)
 
 
 def _tool_source(

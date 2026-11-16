@@ -1,6 +1,6 @@
 """Linter tools: argvs and config markers."""
 
-from agenticpytools.checks.tools import Tool, dependency_names, normalize_dep_name
+from agenticpytools.checks.tools import Tool
 
 LINTERS: dict[str, Tool] = {
     "ruff": {
@@ -35,5 +35,3 @@ LINTERS: dict[str, Tool] = {
         "project_args": ["."],
     },
 }
-
-__all__ = ["LINTERS", "Tool", "dependency_names", "normalize_dep_name"]

@@ -84,12 +84,3 @@ def _decoded(output: str | bytes | None) -> str:
         return output.decode()
 
     return output or ""
-
-
-def summarize(results: list[dict]) -> list[str]:
-    """One status line per result, e.g. 'ok (0): ruff check'."""
-    return [
-        f"{'ok' if r['returncode'] == 0 else 'FAIL'}"
-        f" ({r['returncode']}): {' '.join(r['argv'])}"
-        for r in results
-    ]

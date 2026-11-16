@@ -3,7 +3,7 @@
 from threading import Event, Thread
 
 import pytest
-from agenticpytools.session import get, run_check, start, stop
+from agenticpytools.session import KINDS, get, latest, run_check, start, stop
 from agenticpytools.session.core import DETECTORS
 
 pytestmark = pytest.mark.session
@@ -44,10 +44,11 @@ def _detect_in_order(responses: list, detecting: Event, proceed: Event):
     return detect, pending
 
 
-def _start_and_wait(project, session_id: str) -> dict:
+def _start_idle(project, session_id: str) -> dict:
+    """Start a session whose detectors find no commands, so nothing is pending."""
     session = start(project, session_id, run=_fake_run([]))
 
-    assert session["initial_done"].wait(timeout=5)
+    assert not any(latest(session, kind)["running"] for kind in KINDS)
 
     return session
 
@@ -64,7 +65,7 @@ def test_run_check_stopped_during_detection_redetects_uncached(
     for kind in DETECTORS:
         monkeypatch.setitem(DETECTORS, kind, _no_commands)
 
-    old = _start_and_wait(tmp_path, "s1")
+    old = _start_idle(tmp_path, "s1")
     detecting, proceed = Event(), Event()
     replacement_detection = [[]] if replace else []
     detect, pending = _detect_in_order(
@@ -85,7 +86,7 @@ def test_run_check_stopped_during_detection_redetects_uncached(
         assert detecting.wait(timeout=5)
         assert stop(tmp_path, "s1") is True
 
-        current = _start_and_wait(tmp_path, "s1") if replace else None
+        current = _start_idle(tmp_path, "s1") if replace else None
         proceed.set()
         worker.join(timeout=5)
         [entry] = returned

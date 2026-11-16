@@ -34,12 +34,6 @@ def test_changed_python_files_yields_new_file(tmp_path):
     assert "new.py" in batches.get(timeout=5)
 
 
-def test_changed_python_files_returns_iterator(tmp_path):
-    iterator = changed_python_files(tmp_path)
-
-    assert hasattr(iterator, "__next__")
-
-
 def test_changed_python_files_requires_watchfiles(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "watchfiles", None)
 

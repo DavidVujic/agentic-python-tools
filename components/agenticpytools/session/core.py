@@ -51,13 +51,11 @@ def start(
         kinds = tuple(kind for kind in KINDS if detected[kind])
         session = {
             "project": str(path),
-            "session_id": session_id,
             "commands": detected,
             "latest": {},
             "pending": {kind: int(kind in kinds) for kind in KINDS},
             "thread": None,
             "stop": threading.Event(),
-            "initial_done": threading.Event(),
         }
         thread = threading.Thread(
             target=_run_in_background, args=(session, run, kinds), daemon=True
@@ -73,18 +71,8 @@ def _run_in_background(
     session: dict, run: Callable[..., list[dict]], kinds: tuple[str, ...]
 ) -> None:
     """Warm the caches with the initial runs, then rerun on file changes."""
-    _run_initial(session, run, kinds)
+    _run_batch(session, run, None, kinds)
     _watch(session, run)
-
-
-def _run_initial(
-    session: dict, run: Callable[..., list[dict]], kinds: tuple[str, ...]
-) -> None:
-    """Run the kinds marked pending at start once, then mark the initial runs done."""
-    try:
-        _run_batch(session, run, None, kinds)
-    finally:
-        session["initial_done"].set()
 
 
 def _default_entry(kind: str) -> dict:

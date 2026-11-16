@@ -1,7 +1,7 @@
 """Unit tests for the environment component's project-tool detection."""
 
 import pytest
-from agenticpytools.environment.tools import project_tool
+from agenticpytools.environment.tools import dotted_keys, project_tool
 
 pytestmark = pytest.mark.environment
 
@@ -77,3 +77,15 @@ def test_project_tool(tmp_path, monkeypatch, case):
     _patch_which(monkeypatch, which)
 
     assert project_tool(tmp_path) == expected
+
+
+def test_dotted_keys():
+    table = {"project": {"name": "x"}, "tool": {"ruff": {"lint": {}}}}
+
+    assert dotted_keys(table) == {
+        "project",
+        "project.name",
+        "tool",
+        "tool.ruff",
+        "tool.ruff.lint",
+    }

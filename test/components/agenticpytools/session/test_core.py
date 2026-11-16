@@ -84,15 +84,6 @@ def _blocking_run(calls: list, entered: Event, release: Event):
     return run
 
 
-def _start_and_wait(project: Path, session_id: str, run) -> dict:
-    """Start a session and wait for its background initial runs to finish."""
-    session = start(project, session_id, run=run)
-
-    assert session["initial_done"].wait(timeout=5), "initial runs did not finish"
-
-    return session
-
-
 def _wait_until(condition, timeout: float = 5.0) -> bool:
     deadline = monotonic() + timeout
 
@@ -103,6 +94,20 @@ def _wait_until(condition, timeout: float = 5.0) -> bool:
         sleep(0.05)
 
     return False
+
+
+def _initial_done(session: dict) -> bool:
+    """Whether no run of any kind is scheduled or in progress."""
+    return not any(latest(session, kind)["running"] for kind in KINDS)
+
+
+def _start_and_wait(project: Path, session_id: str, run) -> dict:
+    """Start a session and wait for its background initial runs to finish."""
+    session = start(project, session_id, run=run)
+
+    assert _wait_until(lambda: _initial_done(session)), "initial runs did not finish"
+
+    return session
 
 
 def test_start_detects_and_runs_once(tmp_path, monkeypatch):
@@ -153,7 +158,7 @@ def test_start_returns_before_initial_runs_finish(tmp_path, monkeypatch):
 
     assert entered.wait(timeout=5), "initial runs did not start in the background"
     assert get(tmp_path, "s1") is session
-    assert not session["initial_done"].is_set()
+    assert not _initial_done(session)
 
     for kind in KINDS:
         check_calls: list = []
@@ -166,7 +171,7 @@ def test_start_returns_before_initial_runs_finish(tmp_path, monkeypatch):
 
     release.set()
 
-    assert session["initial_done"].wait(timeout=5)
+    assert _wait_until(lambda: _initial_done(session))
     for kind in KINDS:
         assert latest(session, kind)["origin"] == "initial"
         assert latest(session, kind)["running"] is False
@@ -207,7 +212,7 @@ def test_start_is_idempotent_while_initial_runs(tmp_path, monkeypatch):
     session = get(tmp_path, "s1")
 
     assert session is not None
-    assert session["initial_done"].wait(timeout=5)
+    assert _wait_until(lambda: _initial_done(session))
     assert len(sessions) == len(starters)
     assert all(s is session for s in sessions)
     assert len(calls) == len(KINDS)
@@ -427,7 +432,7 @@ def test_empty_project(tmp_path, monkeypatch):
     assert entry["origin"] == "none"
     assert entry["running"] is False
     assert entry["note"] == "no lint commands detected for project"
-    assert session["initial_done"].wait(timeout=5)
+    assert _initial_done(session)
     assert calls == []
     assert lint_calls == []
 
@@ -497,8 +502,7 @@ def test_stop_during_initial_runs(tmp_path, monkeypatch):
 
     assert stopped == [True]
     assert not session["thread"].is_alive()
-    assert session["initial_done"].is_set()
-    assert all(latest(session, kind)["running"] is False for kind in KINDS)
+    assert _initial_done(session)
     assert [files for _, files in calls] == [None] * len(KINDS)
     assert stop(tmp_path, "s1") is False
 
@@ -732,7 +736,7 @@ def test_initial_running_is_per_kind(tmp_path, monkeypatch):
     finally:
         release.set()
 
-    assert session["initial_done"].wait(timeout=5)
+    assert _wait_until(lambda: _initial_done(session))
     assert latest(session, "test")["origin"] == "initial"
     assert latest(session, "test")["running"] is False
 
@@ -838,5 +842,5 @@ def test_kind_without_commands_is_not_running_while_others_run(tmp_path, monkeyp
     finally:
         release.set()
 
-    assert session["initial_done"].wait(timeout=5)
+    assert _wait_until(lambda: _initial_done(session))
     assert latest(session, "lint")["running"] is False
