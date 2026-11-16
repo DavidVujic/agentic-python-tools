@@ -64,3 +64,33 @@ Copy the [Agent REPL MCP ](./docs/skills/agent-repl-mcp/SKILL.md) skill to your 
 
 ## Demo
 ![Agent REPL MCP in action](docs/images/agent-repl-mcp.gif)
+
+
+# Agent Checks MCP
+
+Status: WIP, not ready for usage (yet)
+
+An MCP server that watches a project and serves cached lint, typecheck, and test results.
+
+The Checks MCP watches a project in the background and keeps lint, typecheck, and test results up to date, so your agent gets them instantly instead of waiting for each run. Each tool takes a `project_full_path` and a `session_id`:
+
+## Setup
+
+### Add the MCP server to your harness
+
+#### Example: using `uvx`
+``` json
+{
+  "mcpServers": {
+    "agent-checks-mcp": {
+      "command": "uvx",
+      "args": ["agent-checks-mcp"]
+    }
+  }
+}
+```
+
+or install it:
+``` shell
+pip install agent-checks-mcp
+```
