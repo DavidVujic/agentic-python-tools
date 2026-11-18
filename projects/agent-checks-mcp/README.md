@@ -1,19 +1,16 @@
 # Agent Checks MCP
 
-Status: WIP, not ready for usage (yet)
+An MCP server that watches a project and serves lint, typecheck, and test results.
 
-An MCP server that watches a project and serves cached lint, typecheck, and test results.
+The Agent Checks MCP is built to make the code verification process faster and with less frustration. Without human interaction,
+it will analyze the codebase to figure out the setup and will find the commands for linting, type checking and testing - without the need of any Agent instructions.
 
-The Checks MCP watches a project in the background and keeps lint, typecheck, and test results up to date, so your agent gets them instantly instead of waiting for each run. Each tool takes a `project_full_path` and a `session_id`:
+The MCP takes the burden off the Agent. It watches a project in the background and keeps lint, typecheck, and test results up to date,
+so your agent gets them instantly instead of having to wait for each run. Each tool takes a `project_full_path` and a `session_id`.
 
-- `start_watching` — start watching a project; returns at once with its detected commands, while the initial lint, typecheck, and test runs warm the cache in the background.
-- `detected_commands` — the lint, typecheck, and test commands for a watched session, detected on demand otherwise.
-- `lint` — latest cached lint results for the session; runs lint on demand if not ready.
-- `typecheck` — latest cached typecheck results for the session; runs typecheck on demand if not ready.
-- `test` — latest cached test results for the session; runs the tests on demand if not ready.
-- `stop_watching` — stop watching a project session; the watcher thread exits.
+On each file change it will run _lint_ and _type checks_ for the changed code, and the affected _tests_.
 
-Each `lint`, `typecheck`, and `test` result has a `running` flag that covers only that check kind. While a run of the kind is in progress, the tool returns the previous result (or a placeholder without results) with `running: true`, instead of waiting. A failed or cancelled run returns an entry without results and a `note`, and is not retried until files change or a new session starts.
+Agent Checks MCP has support for the major Python linting and type checking tools, and pytest.
 
 ## Setup
 
