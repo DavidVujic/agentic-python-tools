@@ -14,6 +14,7 @@ from agenticpytools.watcher.core import IGNORED_DIR_NAMES
 _GRAPHS: dict[str, dict] = {}
 _LOCK = threading.Lock()
 _DEFAULT_PATTERNS = ("test_*.py", "*_test.py")
+INIT_PY = "__init__.py"
 
 
 def is_test_file(rel_path: str, patterns: tuple[str, ...] = _DEFAULT_PATTERNS) -> bool:
@@ -126,7 +127,7 @@ def module_of(project: Path, rel_path: str) -> str | None:
 
     *_, name = rel.parts
 
-    if name == "__init__.py":
+    if name == INIT_PY:
         return ".".join(_package_of(file.parent, root)) or None
 
     return ".".join([*_package_of(file.parent, root), name.removesuffix(".py")])
@@ -146,13 +147,13 @@ def _package_of(directory: Path, root: Path) -> list[str]:
 
 def _is_package(directory: Path) -> bool:
     """True for a package, also counting namespace dirs that hold only package dirs."""
-    if (directory / "__init__.py").is_file():
+    if (directory / INIT_PY).is_file():
         return True
 
     children = list(directory.iterdir())
 
     return not any(child.is_file() for child in children) and any(
-        (child / "__init__.py").is_file() for child in children if child.is_dir()
+        (child / INIT_PY).is_file() for child in children if child.is_dir()
     )
 
 
@@ -359,7 +360,7 @@ def _seeds_for(graph: dict, rel_path: str, module: str) -> set[str]:
     """Graph modules to walk from for a changed file."""
     name = PurePosixPath(rel_path).name
 
-    if name == "__init__.py":
+    if name == INIT_PY:
         return {module, *_package_modules(graph, module)}
 
     return {module}
