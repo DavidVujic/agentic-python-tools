@@ -1,8 +1,10 @@
 """Map changed source files to the test files they affect."""
 
 import ast
+import configparser
 import os
 import threading
+import tomllib
 from collections.abc import Iterator
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
@@ -11,13 +13,105 @@ from agenticpytools.watcher.core import IGNORED_DIR_NAMES
 
 _GRAPHS: dict[str, dict] = {}
 _LOCK = threading.Lock()
+_DEFAULT_PATTERNS = ("test_*.py", "*_test.py")
 
 
-def is_test_file(rel_path: str) -> bool:
-    """True for a pytest-default test file path."""
+def is_test_file(rel_path: str, patterns: tuple[str, ...] = _DEFAULT_PATTERNS) -> bool:
+    """True for a path whose basename matches the given test file patterns."""
     name = PurePosixPath(rel_path).name
 
-    return fnmatch(name, "test_*.py") or fnmatch(name, "*_test.py")
+    return any(fnmatch(name, pattern) for pattern in patterns)
+
+
+def pytest_ini(project: Path) -> dict:
+    """The project's pytest ini options, from the first config file in pytest's order."""
+    root = Path(project).expanduser().resolve()
+
+    for options in (
+        _ini_options(root / "pytest.ini", "pytest"),
+        _toml_ini_options(root / "pyproject.toml"),
+        _ini_options(root / "tox.ini", "pytest"),
+        _ini_options(root / "setup.cfg", "tool:pytest"),
+    ):
+        if options is not None:
+            return options
+
+    return {}
+
+
+def testpaths(project: Path) -> tuple[str, ...]:
+    """The project's pytest testpaths roots, normalized; empty means the whole project."""
+    root = Path(project).expanduser().resolve()
+    options = pytest_ini(root)
+
+    return tuple(
+        normalized
+        for path in _as_list(options.get("testpaths", []))
+        if (normalized := _normalized_root(path, root)) is not None
+    )
+
+
+def python_files(project: Path) -> tuple[str, ...]:
+    """The project's pytest python_files patterns, defaulting to pytest's."""
+    patterns = _as_list(pytest_ini(project).get("python_files", []))
+
+    return tuple(patterns) or _DEFAULT_PATTERNS
+
+
+def _ini_options(path: Path, section: str) -> dict | None:
+    """A config file's pytest options, or None when file or section is missing."""
+    parser = configparser.ConfigParser()
+
+    try:
+        parser.read(path)
+    except (OSError, configparser.Error):
+        return None
+
+    if not parser.has_section(section):
+        return None
+
+    return dict(parser[section])
+
+
+def _toml_ini_options(path: Path) -> dict | None:
+    """The pyproject [tool.pytest.ini_options] table, or None when missing."""
+    try:
+        with path.open("rb") as file:
+            data = tomllib.load(file)
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+
+    tool = data.get("tool", {})
+    pytest = tool.get("pytest", {}) if isinstance(tool, dict) else {}
+    options = pytest.get("ini_options") if isinstance(pytest, dict) else None
+
+    return dict(options) if isinstance(options, dict) else None
+
+
+def _as_list(value: object) -> list[str]:
+    """A config value in string or list form, as a list of strings."""
+    if isinstance(value, str):
+        return value.split()
+
+    if isinstance(value, list):
+        return [str(item) for item in value]
+
+    return []
+
+
+def _normalized_root(path: str, root: Path) -> str | None:
+    """A testpaths entry as a project-relative root; '' matches all, None when outside."""
+    entry = path.removeprefix("./").rstrip("/")
+
+    if PurePosixPath(entry).is_absolute():
+        try:
+            relative = Path(entry).resolve().relative_to(root).as_posix()
+        except ValueError:
+            return None
+
+        return "" if relative == "." else relative
+
+    return "" if entry in ("", ".") else entry
 
 
 def module_of(project: Path, rel_path: str) -> str | None:
@@ -142,6 +236,8 @@ def _loaded(root: Path) -> dict:
 
     if graph is None:
         graph = _empty_graph()
+        graph["roots"] = testpaths(root)
+        graph["patterns"] = python_files(root)
         _GRAPHS[str(root)] = graph
 
         for rel_path in _py_files(root):
@@ -151,8 +247,15 @@ def _loaded(root: Path) -> dict:
 
 
 def _empty_graph() -> dict:
-    """A fresh graph: per-file modules, imports, mtimes, and reverse importer edges."""
-    return {"modules": {}, "imports": {}, "mtimes": {}, "importers": {}}
+    """A fresh graph: modules, imports, mtimes, importer edges, and test discovery config."""
+    return {
+        "modules": {},
+        "imports": {},
+        "mtimes": {},
+        "importers": {},
+        "roots": (),
+        "patterns": (),
+    }
 
 
 def _add(graph: dict, root: Path, rel_path: str) -> None:
@@ -228,11 +331,22 @@ def _affected(graph: dict, root: Path, changed: list[str]) -> set[str] | None:
     return affected | _importing_tests(graph, seeds)
 
 
+def _is_test(graph: dict, rel_path: str) -> bool:
+    """True for a path this graph counts as a test file."""
+    if not is_test_file(rel_path, graph["patterns"]):
+        return False
+
+    path = PurePosixPath(rel_path)
+    roots = graph["roots"]
+
+    return not roots or any(root == "" or path.is_relative_to(root) for root in roots)
+
+
 def _directly_affected(graph: dict, rel_path: str) -> set[str]:
     """Test files a changed path affects by itself, without following imports."""
     name = PurePosixPath(rel_path).name
 
-    if is_test_file(rel_path):
+    if _is_test(graph, rel_path):
         return {rel_path}
 
     if name == "conftest.py":
@@ -296,7 +410,7 @@ def _follow_importer(
     graph: dict, importer: str, tests: set[str], pending: set[str]
 ) -> None:
     """One importer of a changed module: an affected test, or a module to follow."""
-    if is_test_file(importer):
+    if _is_test(graph, importer):
         tests.add(importer)
     elif PurePosixPath(importer).name == "conftest.py":
         tests.update(_subtree_tests(graph, importer))
@@ -323,5 +437,6 @@ def _subtree_tests(graph: dict, conftest: str) -> set[str]:
     return {
         rel_path
         for rel_path in graph["imports"]
-        if is_test_file(rel_path) and PurePosixPath(rel_path).is_relative_to(directory)
+        if _is_test(graph, rel_path)
+        and PurePosixPath(rel_path).is_relative_to(directory)
     }
