@@ -15,23 +15,36 @@ pytestmark = pytest.mark.session
 CANNED_LINT_COMMAND = {"argv": ["ruff", "check"]}
 
 
-def _patch_which(monkeypatch, found: set[str]) -> None:
+def _write(project: Path, rel_path: str, content: str) -> None:
+    """Write a file under the project, creating missing parent directories."""
+    path = project / rel_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
+
+
+def _uv_project(project: Path) -> None:
+    """A uv project whose dev group depends on ruff, ty, and pytest."""
+    (project / "uv.lock").touch()
+
+    _write(
+        project,
+        "pyproject.toml",
+        '[dependency-groups]\ndev = ["ruff", "ty", "pytest"]\n',
+    )
+
+
+def _patch_uv(monkeypatch) -> None:
+    """Make both shutil.which sites find uv and nothing else."""
+
     def which(name: str) -> str | None:
-        return f"/usr/bin/{name}" if name in found else None
+        return "/usr/bin/uv" if name == "uv" else None
 
     monkeypatch.setattr("agenticpytools.checks.sources.shutil.which", which)
     monkeypatch.setattr("agenticpytools.environment.core.shutil.which", which)
 
 
-def _uv_project_with_ruff_ty_pytest(project: Path) -> None:
-    """A uv project whose dev group depends on ruff, ty, and pytest."""
-    (project / "uv.lock").touch()
-    (project / "pyproject.toml").write_text(
-        '[dependency-groups]\ndev = ["ruff", "ty", "pytest"]\n'
-    )
-
-
 def _results(commands: list[dict]) -> list[dict]:
+    """Successful results for the given commands."""
     return [
         {"argv": c["argv"], "returncode": 0, "stdout": "", "stderr": ""}
         for c in commands
@@ -39,7 +52,9 @@ def _results(commands: list[dict]) -> list[dict]:
 
 
 def _fake_run(calls: list):
-    def run(commands, files=None, timeout=60.0):
+    """A run that records its calls and succeeds for every command."""
+
+    def run(commands, files=None, _timeout=60.0):
         calls.append((commands, files))
 
         return _results(commands)
@@ -48,6 +63,7 @@ def _fake_run(calls: list):
 
 
 def _wait_until(condition, timeout: float = 5.0) -> bool:
+    """Poll a condition until it holds or the timeout passes."""
     deadline = monotonic() + timeout
 
     while monotonic() < deadline:
@@ -60,12 +76,12 @@ def _wait_until(condition, timeout: float = 5.0) -> bool:
 
 
 def _initial_done(session: dict) -> bool:
-    """Whether no run of any kind is scheduled or in progress."""
+    """True while no run of any kind is scheduled or in progress."""
     return not any(latest(session, kind)["running"] for kind in KINDS)
 
 
 def _start_and_wait(project: Path, session_id: str, run) -> dict:
-    """Start a session and wait for its background initial runs to finish."""
+    """Start a session and wait until its initial background runs finish."""
     session = start(project, session_id, run=run)
 
     assert _wait_until(lambda: _initial_done(session)), "initial runs did not finish"
@@ -84,9 +100,46 @@ def _batch_session(project: Path) -> dict:
     }
 
 
+def _run_batch_collecting(session: dict, batch, kinds=None):
+    """Run one batch through a recording fake run; return (session, calls)."""
+    calls: list = []
+    pending = kinds if kinds is not None else _mark_pending(session)
+
+    _run_batch(session, _fake_run(calls), batch, pending)
+
+    return session, calls
+
+
+def _pkg_project(tmp_path: Path, test_name: str, test_body: str) -> None:
+    """Scaffold a pkg module and one test file importing it."""
+    _write(tmp_path, "pkg/__init__.py", "")
+    _write(tmp_path, "pkg/module.py", "x = 1\n")
+    _write(tmp_path, f"test/{test_name}", test_body)
+
+
+def _record_argvs(monkeypatch) -> list:
+    """Record every subprocess argv and report a successful, silent run."""
+    argvs: list = []
+
+    def fake_run(argv, **_kwargs):
+        argvs.append(argv)
+
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("agenticpytools.runner.core.subprocess.run", fake_run)
+
+    return argvs
+
+
+def _assert_changed_files(session: dict, batch: list[str]) -> None:
+    """Assert every kind's latest entry ran on the batch's files."""
+    for kind in KINDS:
+        assert session["latest"][kind]["changed_files"] == batch
+
+
 def test_run_batch_runs_all_kinds(tmp_path, monkeypatch):
-    _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff_ty_pytest(tmp_path)
+    _patch_uv(monkeypatch)
+    _uv_project(tmp_path)
     calls: list = []
     session = _start_and_wait(tmp_path, "s1", _fake_run(calls))
 
@@ -100,51 +153,35 @@ def test_run_batch_runs_all_kinds(tmp_path, monkeypatch):
 
 def test_run_batch_passes_only_existing_files(tmp_path):
     (tmp_path / "kept.py").write_text("x = 1\n")
-    session = _batch_session(tmp_path)
-    calls: list = []
 
-    _run_batch(
-        session, _fake_run(calls), ["gone.py", "kept.py"], _mark_pending(session)
-    )
+    session = _batch_session(tmp_path)
+    session, calls = _run_batch_collecting(session, ["gone.py", "kept.py"])
 
     files_seen = [files for _, files in calls]
 
     assert files_seen.count(["kept.py"]) == 2
     assert files_seen.count(None) == 1
-    for kind in KINDS:
-        assert session["latest"][kind]["changed_files"] == ["gone.py", "kept.py"]
+    _assert_changed_files(session, ["gone.py", "kept.py"])
 
 
 def test_run_batch_runs_whole_project_when_all_deleted(tmp_path):
     session = _batch_session(tmp_path)
-    calls: list = []
-
-    _run_batch(session, _fake_run(calls), ["gone.py"], _mark_pending(session))
+    session, calls = _run_batch_collecting(session, ["gone.py"])
 
     assert [files for _, files in calls] == [None] * len(KINDS)
+
     for kind in KINDS:
         assert session["latest"][kind]["origin"] == "watcher"
-        assert session["latest"][kind]["changed_files"] == ["gone.py"]
+
+    _assert_changed_files(session, ["gone.py"])
 
 
 def test_run_batch_runs_affected_tests_on_production_file_change(tmp_path, monkeypatch):
-    _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff_ty_pytest(tmp_path)
-    (tmp_path / "pkg").mkdir()
-    (tmp_path / "pkg" / "__init__.py").write_text("")
-    (tmp_path / "pkg" / "module.py").write_text("x = 1\n")
-    (tmp_path / "test").mkdir()
-    (tmp_path / "test" / "test_module.py").write_text("from pkg import module\n")
-    argvs: list = []
+    _patch_uv(monkeypatch)
+    _uv_project(tmp_path)
+    _pkg_project(tmp_path, "test_module.py", "from pkg import module\n")
+    argvs = _record_argvs(monkeypatch)
 
-    def fake_subprocess_run(argv, **kwargs):
-        argvs.append(argv)
-
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(
-        "agenticpytools.runner.core.subprocess.run", fake_subprocess_run
-    )
     session = _batch_session(tmp_path)
     session["commands"] = {kind: DETECTORS[kind](tmp_path) for kind in KINDS}
 
@@ -158,20 +195,15 @@ def test_run_batch_runs_affected_tests_on_production_file_change(tmp_path, monke
 
 
 def test_run_batch_publishes_note_when_no_test_is_affected(tmp_path):
-    (tmp_path / "pkg").mkdir()
-    (tmp_path / "pkg" / "__init__.py").write_text("")
-    (tmp_path / "pkg" / "module.py").write_text("x = 1\n")
-    (tmp_path / "test").mkdir()
-    (tmp_path / "test" / "test_unrelated.py").write_text(
-        "def test_unrelated():\n    assert True\n"
+    _pkg_project(
+        tmp_path, "test_unrelated.py", "def test_unrelated():\n    assert True\n"
     )
+
     session = _batch_session(tmp_path)
     session["commands"] = {
         kind: [{"argv": [tool]}] for kind, tool in zip(KINDS, ("ruff", "ty", "pytest"))
     }
-    calls: list = []
-
-    _run_batch(session, _fake_run(calls), ["pkg/module.py"], _mark_pending(session))
+    session, calls = _run_batch_collecting(session, ["pkg/module.py"])
 
     assert sorted((commands[0]["argv"][0], files) for commands, files in calls) == [
         ("ruff", ["pkg/module.py"]),
@@ -191,9 +223,8 @@ def test_run_batch_cancels_pending_kinds_once_stopped(tmp_path):
     session = _batch_session(tmp_path)
     session["pending"] = dict.fromkeys(KINDS, 1)
     session["stop"].set()
-    calls: list = []
 
-    _run_batch(session, _fake_run(calls), None, KINDS)
+    session, calls = _run_batch_collecting(session, None, KINDS)
 
     assert calls == []
     assert _mark_pending(session) == ()
