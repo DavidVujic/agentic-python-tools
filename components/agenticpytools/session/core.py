@@ -10,6 +10,7 @@ from pathlib import Path
 from agenticpytools.linter import detect_lint_commands
 from agenticpytools.runner import run_commands
 from agenticpytools.tester import detect_test_commands
+from agenticpytools.testmap import affected_tests
 from agenticpytools.typechecker import detect_typecheck_commands
 from agenticpytools.watcher import changed_python_files
 
@@ -196,6 +197,8 @@ def _run_batch(
 
         if session["stop"].is_set():
             entry = _outcome_entry(job, None, f"{kind} run cancelled: session stopped")
+        elif kind == "test" and batch is not None:
+            entry = _run_affected_tests(run, session, job)
         else:
             entry = _run_job(run, session["commands"][kind], files, job)
 
@@ -203,6 +206,18 @@ def _run_batch(
 
     with ThreadPoolExecutor(max_workers=len(KINDS)) as executor:
         list(executor.map(run_kind, kinds))
+
+
+def _run_affected_tests(
+    run: Callable[..., list[dict]], session: dict, job: dict
+) -> dict:
+    """A watcher batch's test entry: only affected tests run, or none at all."""
+    affected = affected_tests(session["project"], job["changed_files"])
+
+    if affected is not None and not affected:
+        return _outcome_entry(job, True, "no affected tests")
+
+    return _run_job(run, session["commands"]["test"], affected, job)
 
 
 def latest(session: dict, kind: str = "lint") -> dict:

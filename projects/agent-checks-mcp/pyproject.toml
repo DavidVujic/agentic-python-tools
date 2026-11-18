@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-checks-mcp"
-version = "0.0.1"
+version = "0.1.0"
 description = "An MCP server that watches a project and serves cached lint, typecheck, and test results"
 authors = [{ name = "David Vujic" }]
 repository = "https://github.com/DavidVujic/agentic-python-tools"
@@ -33,5 +33,6 @@ top-namespace = "agent_checks_mcp"
 "../../components/agenticpytools/runner" = "agenticpytools/runner"
 "../../components/agenticpytools/session" = "agenticpytools/session"
 "../../components/agenticpytools/tester" = "agenticpytools/tester"
+"../../components/agenticpytools/testmap" = "agenticpytools/testmap"
 "../../components/agenticpytools/typechecker" = "agenticpytools/typechecker"
 "../../components/agenticpytools/watcher" = "agenticpytools/watcher"

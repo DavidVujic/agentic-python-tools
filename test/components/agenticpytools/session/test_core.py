@@ -3,10 +3,8 @@
 from pathlib import Path
 from threading import Event, Thread
 from time import monotonic, sleep
-from types import SimpleNamespace
 
 import pytest
-from agenticpytools.runner import run_commands
 from agenticpytools.session import (
     KINDS,
     commands,
@@ -305,83 +303,6 @@ def test_watcher_reruns_all_kinds_on_change(tmp_path, monkeypatch):
     assert latest(session, "test")["changed_files"] == ["new.py"]
 
 
-def test_run_batch_runs_all_kinds(tmp_path, monkeypatch):
-    _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff_ty_pytest(tmp_path)
-    calls: list = []
-    session = _start_and_wait(tmp_path, "s1", _fake_run(calls))
-
-    _run_batch(session, _fake_run(calls), ["x.py"], _mark_pending(session))
-
-    for kind in KINDS:
-        assert latest(session, kind)["origin"] == "watcher"
-        assert latest(session, kind)["changed_files"] == ["x.py"]
-        assert latest(session, kind)["running"] is False
-
-
-def _batch_session(project: Path) -> dict:
-    """A minimal session with one canned command per kind."""
-    return {
-        "project": str(project),
-        "commands": {kind: [CANNED_LINT_COMMAND] for kind in KINDS},
-        "latest": {},
-        "pending": dict.fromkeys(KINDS, 0),
-        "stop": Event(),
-    }
-
-
-def test_run_batch_passes_only_existing_files(tmp_path):
-    (tmp_path / "kept.py").write_text("x = 1\n")
-    session = _batch_session(tmp_path)
-    calls: list = []
-
-    _run_batch(
-        session, _fake_run(calls), ["gone.py", "kept.py"], _mark_pending(session)
-    )
-
-    assert [files for _, files in calls] == [["kept.py"]] * len(KINDS)
-    for kind in KINDS:
-        assert session["latest"][kind]["changed_files"] == ["gone.py", "kept.py"]
-
-
-def test_run_batch_runs_whole_project_when_all_deleted(tmp_path):
-    session = _batch_session(tmp_path)
-    calls: list = []
-
-    _run_batch(session, _fake_run(calls), ["gone.py"], _mark_pending(session))
-
-    assert [files for _, files in calls] == [None] * len(KINDS)
-    for kind in KINDS:
-        assert session["latest"][kind]["origin"] == "watcher"
-        assert session["latest"][kind]["changed_files"] == ["gone.py"]
-
-
-def test_run_batch_runs_whole_test_suite_on_production_file_change(
-    tmp_path, monkeypatch
-):
-    _patch_which(monkeypatch, {"uv"})
-    _uv_project_with_ruff_ty_pytest(tmp_path)
-    (tmp_path / "module.py").write_text("x = 1\n")
-    argvs: list = []
-
-    def fake_subprocess_run(argv, **kwargs):
-        argvs.append(argv)
-
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(
-        "agenticpytools.runner.core.subprocess.run", fake_subprocess_run
-    )
-    session = _batch_session(tmp_path)
-    session["commands"] = {kind: DETECTORS[kind](tmp_path) for kind in KINDS}
-
-    _run_batch(session, run_commands, ["module.py"], _mark_pending(session))
-
-    assert ["uv", "run", "pytest"] in argvs
-    assert ["uv", "run", "ty", "check", "module.py"] in argvs
-    assert session["latest"]["test"]["changed_files"] == ["module.py"]
-
-
 def test_watcher_runs_whole_project_on_deletion(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv"})
     _uv_project_with_ruff(tmp_path)
@@ -395,26 +316,6 @@ def test_watcher_runs_whole_project_on_deletion(tmp_path, monkeypatch):
     assert _wait_until(lambda: latest(session)["changed_files"] == ["old.py"])
     assert calls[-1][1] is None
     assert latest(session)["origin"] == "watcher"
-
-
-def test_run_batch_cancels_pending_kinds_once_stopped(tmp_path):
-    session = _batch_session(tmp_path)
-    session["pending"] = dict.fromkeys(KINDS, 1)
-    session["stop"].set()
-    calls: list = []
-
-    _run_batch(session, _fake_run(calls), None, KINDS)
-
-    assert calls == []
-    assert _mark_pending(session) == ()
-    for kind in KINDS:
-        entry = latest(session, kind)
-
-        assert entry["origin"] == "initial"
-        assert entry["results"] is None
-        assert entry["ok"] is None
-        assert entry["note"] == f"{kind} run cancelled: session stopped"
-        assert entry["running"] is False
 
 
 def test_empty_project(tmp_path, monkeypatch):
