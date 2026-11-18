@@ -2,15 +2,15 @@
 
 A repo containing tools for Agentic Engineering with Python.
 
-Currently containing two tools:
-- Agent REPL MCP
-- Agent Checks MCP
-
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/DavidVujic/agentic-python-tools/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/DavidVujic/agentic-python-tools/tree/main)
 
 [![CodeScene Average Code Health](https://codescene.io/projects/87469/status-badges/average-code-health)](https://codescene.io/projects/87469)
 
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=DavidVujic_agentic-python-tools&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=DavidVujic_agentic-python-tools)
+
+Currently containing two tools:
+- Agent REPL MCP
+- Agent Checks MCP
 
 ## Agent REPL MCP
 
