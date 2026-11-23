@@ -32,3 +32,6 @@ or install it:
 ``` shell
 pip install agent-checks-mcp
 ```
+
+## Skills
+Copy the [Agent Checks MCP ](https://github.com/DavidVujic/agentic-python-tools/blob/main/docs/skills/agent-checks-mcp/SKILL.md) skill to your setup and modify it as you like.
