@@ -1,11 +1,11 @@
 ---
 name: agent-repl-mcp
-description: Use for REPL-driven Python work with the agent-python-repl-mcp server (behavior of a function, library call, data shape, edge case, or a change to it) when running code in a live process answers faster than reading. Assumes the server is already configured in the agent harness. Covers sessions and kernel lifecycle, the edit-and-verify cycle, fakes instead of real I/O, and normal exceptions vs MCP or kernel failures.
+description: Use for REPL-driven Python work with the agent-repl-mcp server (behavior of a function, library call, data shape, edge case, or a change to it) when running code in a live process answers faster than reading. Assumes the server is already configured in the agent harness. Covers sessions and kernel lifecycle, the edit-and-verify cycle, fakes instead of real I/O, and normal exceptions vs MCP or kernel failures.
 ---
 
 # Agent REPL MCP Skill
 
-The `agent-python-repl-mcp` server provides a persistent Python REPL: one Jupyter kernel per project and session.
+The `agent-repl-mcp` server provides a persistent Python REPL: one Jupyter kernel per project and session.
 
 ## When to use
 
