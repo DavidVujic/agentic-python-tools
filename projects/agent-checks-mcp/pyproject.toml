@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-checks-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "An MCP server that watches a project and serves cached lint, typecheck, and test results"
 authors = [{ name = "David Vujic" }]
 repository = "https://github.com/DavidVujic/agentic-python-tools"
