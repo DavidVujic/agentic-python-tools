@@ -43,6 +43,26 @@ def _patch_uv(monkeypatch) -> None:
     monkeypatch.setattr("agenticpytools.environment.core.shutil.which", which)
 
 
+def _patch_uv_just(monkeypatch) -> None:
+    """Make both shutil.which sites find uv and just, and nothing else."""
+
+    def which(name: str) -> str | None:
+        return "/usr/bin/" + name if name in {"uv", "just"} else None
+
+    monkeypatch.setattr("agenticpytools.checks.sources.shutil.which", which)
+    monkeypatch.setattr("agenticpytools.environment.core.shutil.which", which)
+
+
+def _patch_just(monkeypatch) -> None:
+    """Make both shutil.which sites find just and nothing else."""
+
+    def which(name: str) -> str | None:
+        return "/usr/bin/just" if name == "just" else None
+
+    monkeypatch.setattr("agenticpytools.checks.sources.shutil.which", which)
+    monkeypatch.setattr("agenticpytools.environment.core.shutil.which", which)
+
+
 def _results(commands: list[dict]) -> list[dict]:
     """Successful results for the given commands."""
     return [
@@ -93,7 +113,9 @@ def _batch_session(project: Path) -> dict:
     """A minimal session with one canned command per kind."""
     return {
         "project": str(project),
-        "commands": {kind: [CANNED_LINT_COMMAND] for kind in KINDS},
+        "commands": {
+            kind: {"all": [CANNED_LINT_COMMAND], "files": []} for kind in KINDS
+        },
         "latest": {},
         "pending": dict.fromkeys(KINDS, 0),
         "stop": Event(),
@@ -194,6 +216,73 @@ def test_run_batch_runs_affected_tests_on_production_file_change(tmp_path, monke
     assert session["latest"]["test"]["changed_files"] == ["pkg/module.py"]
 
 
+def test_run_batch_justfile_project_runs_the_file_scoped_commands(
+    tmp_path, monkeypatch
+):
+    _patch_uv_just(monkeypatch)
+    _uv_project(tmp_path)
+    _write(
+        tmp_path,
+        "justfile",
+        "lint:\n    uv run ruff check\n\ntypecheck:\n    uv run ty check"
+        "\n\ntest:\n    uv run pytest\n",
+    )
+    _pkg_project(tmp_path, "test_module.py", "from pkg import module\n")
+    argvs = _record_argvs(monkeypatch)
+
+    session = _batch_session(tmp_path)
+    session["commands"] = {kind: DETECTORS[kind](tmp_path) for kind in KINDS}
+
+    _run_batch(session, run_commands, ["pkg/module.py"], _mark_pending(session))
+
+    pytest_argvs = [argv for argv in argvs if argv[:3] == ["uv", "run", "pytest"]]
+
+    assert not any(argv[0] == "just" for argv in argvs)
+    assert pytest_argvs == [["uv", "run", "pytest", "test/test_module.py"]]
+    assert session["latest"]["test"]["scope"] == "files"
+    assert session["latest"]["lint"]["scope"] == "files"
+    assert session["latest"]["typecheck"]["scope"] == "files"
+
+
+def test_run_batch_justfile_only_project_falls_back_to_the_full_command(
+    tmp_path, monkeypatch
+):
+    _patch_just(monkeypatch)
+    (tmp_path / "justfile").write_text("test:\n    pytest\n")
+    _pkg_project(tmp_path, "test_module.py", "from pkg import module\n")
+    argvs = _record_argvs(monkeypatch)
+
+    session = _batch_session(tmp_path)
+    session["commands"] = {kind: DETECTORS[kind](tmp_path) for kind in KINDS}
+
+    assert session["commands"]["test"]["files"] == []
+
+    _run_batch(session, run_commands, ["pkg/module.py"], _mark_pending(session))
+
+    assert argvs == [["just", "test"]]
+    assert session["latest"]["test"]["scope"] == "all"
+
+
+def test_run_batch_lint_uses_the_file_scoped_ruff_commands(tmp_path, monkeypatch):
+    _patch_uv_just(monkeypatch)
+    (tmp_path / "uv.lock").touch()
+    _write(tmp_path, "pyproject.toml", '[dependency-groups]\ndev = ["ruff"]\n')
+    _write(tmp_path, "justfile", "lint:\n    uv run ruff check\n")
+    _write(tmp_path, "new.py", "x = 1\n")
+    argvs = _record_argvs(monkeypatch)
+
+    session = _batch_session(tmp_path)
+    session["commands"] = {kind: DETECTORS[kind](tmp_path) for kind in KINDS}
+
+    _run_batch(session, run_commands, ["new.py"], _mark_pending(session))
+
+    assert argvs == [
+        ["uv", "run", "ruff", "check", "new.py"],
+        ["uv", "run", "ruff", "format", "--check", "new.py"],
+    ]
+    assert session["latest"]["lint"]["scope"] == "files"
+
+
 def test_run_batch_publishes_note_when_no_test_is_affected(tmp_path):
     _pkg_project(
         tmp_path, "test_unrelated.py", "def test_unrelated():\n    assert True\n"
@@ -201,7 +290,8 @@ def test_run_batch_publishes_note_when_no_test_is_affected(tmp_path):
 
     session = _batch_session(tmp_path)
     session["commands"] = {
-        kind: [{"argv": [tool]}] for kind, tool in zip(KINDS, ("ruff", "ty", "pytest"))
+        kind: {"all": [{"argv": [tool]}], "files": []}
+        for kind, tool in zip(KINDS, ("ruff", "ty", "pytest"))
     }
     session, calls = _run_batch_collecting(session, ["pkg/module.py"])
 

@@ -38,6 +38,10 @@ CANNED_TEST_COMMAND = {
     "tool": "pytest",
 }
 
+CANNED_LINT_COMMANDS = {"all": [CANNED_COMMAND], "files": []}
+CANNED_TYPECHECK_COMMANDS = {"all": [CANNED_TYPECHECK_COMMAND], "files": []}
+CANNED_TEST_COMMANDS = {"all": [CANNED_TEST_COMMAND], "files": []}
+
 CANNED_RESULT = {
     "argv": ["ruff", "check"],
     "returncode": 0,
@@ -76,9 +80,9 @@ CANNED = {
     "project": "/p",
     "session_id": "s1",
     "commands": {
-        "lint": [CANNED_COMMAND],
-        "typecheck": [CANNED_TYPECHECK_COMMAND],
-        "test": [CANNED_TEST_COMMAND],
+        "lint": CANNED_LINT_COMMANDS,
+        "typecheck": CANNED_TYPECHECK_COMMANDS,
+        "test": CANNED_TEST_COMMANDS,
     },
     "latest": {
         "lint": CANNED_LINT_ENTRY,
@@ -117,9 +121,9 @@ def test_start_watching_returns_metadata_only(monkeypatch):
         "session_id": "s1",
         "watching": True,
         "commands": {
-            "lint": [CANNED_COMMAND],
-            "typecheck": [CANNED_TYPECHECK_COMMAND],
-            "test": [CANNED_TEST_COMMAND],
+            "lint": CANNED_LINT_COMMANDS,
+            "typecheck": CANNED_TYPECHECK_COMMANDS,
+            "test": CANNED_TEST_COMMANDS,
         },
     }
 
@@ -133,9 +137,11 @@ def test_start_watching_returns_while_initial_runs_are_blocked(tmp_path, monkeyp
 
         return [CANNED_RESULT]
 
-    monkeypatch.setitem(DETECTORS, "lint", lambda project: [CANNED_COMMAND])
-    monkeypatch.setitem(DETECTORS, "typecheck", lambda project: [])
-    monkeypatch.setitem(DETECTORS, "test", lambda project: [CANNED_TEST_COMMAND])
+    monkeypatch.setitem(DETECTORS, "lint", lambda project: CANNED_LINT_COMMANDS)
+    monkeypatch.setitem(
+        DETECTORS, "typecheck", lambda project: {"all": [], "files": []}
+    )
+    monkeypatch.setitem(DETECTORS, "test", lambda project: CANNED_TEST_COMMANDS)
     monkeypatch.setattr("agenticpytools.session.core.run_commands", blocking_run)
 
     try:
@@ -144,7 +150,7 @@ def test_start_watching_returns_while_initial_runs_are_blocked(tmp_path, monkeyp
         assert entered.wait(timeout=5)
         assert set(result) == {"project", "session_id", "watching", "commands"}
         assert result["watching"] is True
-        assert result["commands"]["test"] == [CANNED_TEST_COMMAND]
+        assert result["commands"]["test"] == CANNED_TEST_COMMANDS
         assert lint(str(tmp_path), "s1")["running"] is True
     finally:
         release.set()
@@ -170,9 +176,9 @@ def test_detected_commands_with_session(monkeypatch):
     monkeypatch.setattr(sessions, "get", lambda project, session_id: CANNED)
 
     assert detected_commands("/p", "s1") == {
-        "lint": [CANNED_COMMAND],
-        "typecheck": [CANNED_TYPECHECK_COMMAND],
-        "test": [CANNED_TEST_COMMAND],
+        "lint": CANNED_LINT_COMMANDS,
+        "typecheck": CANNED_TYPECHECK_COMMANDS,
+        "test": CANNED_TEST_COMMANDS,
     }
 
 
@@ -186,15 +192,22 @@ def test_detected_commands_detects_on_demand(tmp_path, monkeypatch):
 
     result = detected_commands(str(tmp_path), "s1")
 
-    assert [c["argv"] for c in result["lint"]] == [
+    assert [c["argv"] for c in result["lint"]["all"]] == [
         ["uv", "run", "ruff", "check"],
         ["uv", "run", "ruff", "format", "--check"],
     ]
-    assert [c["argv"] for c in result["typecheck"]] == [["uv", "run", "ty", "check"]]
-    assert [c["argv"] for c in result["test"]] == [["uv", "run", "pytest"]]
+    assert [c["argv"] for c in result["typecheck"]["all"]] == [
+        ["uv", "run", "ty", "check"]
+    ]
+    assert [c["argv"] for c in result["test"]["all"]] == [["uv", "run", "pytest"]]
+    assert result["test"]["files"] == result["test"]["all"]
     assert all(
         {"cwd", "source", "tool"} <= set(c)
-        for c in [*result["lint"], *result["typecheck"], *result["test"]]
+        for c in [
+            *result["lint"]["all"],
+            *result["typecheck"]["all"],
+            *result["test"]["all"],
+        ]
     )
 
 
@@ -203,9 +216,9 @@ def test_detected_commands_empty_project(tmp_path, monkeypatch):
     monkeypatch.setattr(sessions, "get", lambda project, session_id: None)
 
     assert detected_commands(str(tmp_path), "s1") == {
-        "lint": [],
-        "typecheck": [],
-        "test": [],
+        "lint": {"all": [], "files": []},
+        "typecheck": {"all": [], "files": []},
+        "test": {"all": [], "files": []},
     }
 
 
@@ -235,7 +248,9 @@ def test_detected_commands_empty_session_id():
     ids=["lint", "typecheck", "test"],
 )
 def test_tool_runs_on_demand_without_session(monkeypatch, kind, command, tool):
-    monkeypatch.setitem(DETECTORS, kind, lambda project: [command])
+    monkeypatch.setitem(
+        DETECTORS, kind, lambda project: {"all": [command], "files": []}
+    )
     calls: list = []
     monkeypatch.setattr("agenticpytools.session.core.run_commands", _fake_run(calls))
 

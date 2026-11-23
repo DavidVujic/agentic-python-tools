@@ -35,7 +35,7 @@ def test_justfile_wins_over_makefile(tmp_path, monkeypatch):
     (tmp_path / "justfile").write_text("lint:\n    ruff check .\n")
     (tmp_path / "Makefile").write_text("lint:\n\truff check .\n")
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert commands == [
         {
@@ -52,7 +52,7 @@ def test_makefile_when_justfile_has_no_lint_recipe(tmp_path, monkeypatch):
     (tmp_path / "justfile").write_text("test:\n    pytest\n")
     (tmp_path / "Makefile").write_text("lint:\n\truff check .\n")
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert [c["argv"] for c in commands] == [["make", "lint"]]
 
@@ -62,7 +62,7 @@ def test_uv_project_with_ruff_dependency(tmp_path, monkeypatch):
     (tmp_path / "uv.lock").touch()
     (tmp_path / "pyproject.toml").write_text('[dependency-groups]\ndev = ["ruff"]\n')
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert [c["argv"] for c in commands] == [
         ["uv", "run", "ruff", "check"],
@@ -75,7 +75,7 @@ def test_uv_project_with_flake8_dependency(tmp_path, monkeypatch):
     (tmp_path / "uv.lock").touch()
     (tmp_path / "pyproject.toml").write_text('[dependency-groups]\ndev = ["flake8"]\n')
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert [c["argv"] for c in commands] == [["uv", "run", "flake8"]]
 
@@ -86,7 +86,7 @@ def test_poe_task(tmp_path, monkeypatch):
         '[tool.poe.tasks]\nlint = "ruff check ."\n'
     )
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert [c["argv"] for c in commands] == [["poe", "lint"]]
 
@@ -97,7 +97,7 @@ def test_pixi_task(tmp_path, monkeypatch):
         '[tool.pixi.tasks]\nlint = "ruff check ."\n'
     )
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert [c["argv"] for c in commands] == [["pixi", "run", "lint"]]
 
@@ -108,7 +108,7 @@ def test_hatch_env_script(tmp_path, monkeypatch):
         '[tool.hatch.envs.test.scripts]\nlint = "ruff check ."\n'
     )
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert [c["argv"] for c in commands] == [["hatch", "run", "test:lint"]]
 
@@ -117,7 +117,7 @@ def test_config_file_marker(tmp_path, monkeypatch):
     _patch_which(monkeypatch, set())
     (tmp_path / ".flake8").touch()
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert [c["argv"] for c in commands] == [["flake8"]]
     assert commands[0]["source"] == "config-file"
@@ -127,14 +127,14 @@ def test_invalid_toml_skips_pyproject_sources(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv", "poe", "pixi", "hatch"})
     (tmp_path / "pyproject.toml").write_text("[tool.uv\n")
 
-    assert detect_lint_commands(tmp_path) == []
+    assert detect_lint_commands(tmp_path) == {"all": [], "files": []}
 
 
 def test_venv_fallback(tmp_path, monkeypatch):
     _patch_which(monkeypatch, set())
     _fake_venv(tmp_path, "flake8")
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     expected_python = str(Path(tmp_path).resolve() / ".venv" / "bin" / "python")
     assert [c["argv"] for c in commands] == [[expected_python, "-m", "flake8"]]
@@ -149,7 +149,7 @@ def test_venv_found_through_symlinked_project_dir(tmp_path, monkeypatch):
     link.symlink_to(real, target_is_directory=True)
     _fake_venv(real, "flake8")
 
-    commands = detect_lint_commands(link)
+    commands = detect_lint_commands(link)["all"]
 
     expected_python = str(link.resolve() / ".venv" / "bin" / "python")
     assert [c["argv"] for c in commands] == [[expected_python, "-m", "flake8"]]
@@ -170,7 +170,7 @@ def test_project_target_declared_as_project_args(tmp_path, monkeypatch, tool, ar
     (tmp_path / "uv.lock").touch()
     (tmp_path / "pyproject.toml").write_text(f'[dependency-groups]\ndev = ["{tool}"]\n')
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert [c["argv"] for c in commands] == [argv]
     assert commands[0]["project_args"] == ["."]
@@ -180,7 +180,7 @@ def test_venv_command_declares_project_args(tmp_path, monkeypatch):
     _patch_which(monkeypatch, set())
     _fake_venv(tmp_path, "black")
 
-    commands = detect_lint_commands(tmp_path)
+    commands = detect_lint_commands(tmp_path)["all"]
 
     assert commands[0]["argv"][-2:] == ["--check", "."]
     assert commands[0]["project_args"] == ["."]
@@ -189,4 +189,4 @@ def test_venv_command_declares_project_args(tmp_path, monkeypatch):
 def test_no_lint_commands(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv", "just", "make", "poe", "pixi", "hatch"})
 
-    assert detect_lint_commands(tmp_path) == []
+    assert detect_lint_commands(tmp_path) == {"all": [], "files": []}

@@ -33,6 +33,8 @@ Call only the requested checks, or all three for a general request, on demand â€
 
 - Each result has a `running` flag covering only that check kind: while a run of the kind is scheduled or in progress, the tool returns the previous result (or a placeholder without results) with `running: true`. `running: true` is not a current pass, even with an older cached result; call again until `running: false`, or report the check unavailable.
 - Each result has an `origin`: `"watcher"`, `"initial"`, or `"on-demand"`, or `"none"` when no commands of that kind were detected.
+- A detected check kind has two command scopes: `all` (the full command, the first detection hit) and `files` (a file-scoped variant, when a recipe command without file arguments was backed by a deeper tool that takes file paths). Initial and on-demand runs use the `all` scope; watcher batches use the `files` scope when it was detected, otherwise `all`.
+- Each entry has a `scope`: `"all"` or `"files"`, showing which command scope ran; the `argv` in its results shows the exact command, with any changed or affected files appended.
 - Pass only for a successful result produced after your last change. Report completed failures as fail, with the failures.
 - Errors, `origin: "none"`, no detected command, or a failed or cancelled run without results count as unavailable, never passed.
 
