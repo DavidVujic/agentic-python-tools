@@ -33,5 +33,16 @@ or install it:
 pip install agent-checks-mcp
 ```
 
+## Figuring out the setup
+For each check, it tries these places in order and stops at the first one that has a command:
+
+1. **justfile**: recipe named `lint`, `typecheck`/`type-check`/`types`, or `test`/`tests` (needs `just` installed)
+2. **Makefile**: same-named target (needs `make`)
+3. **pyproject tasks**: poe, then pixi, then hatch
+4. **pyproject tools**: tool listed as a dependency or with a config section/marker file; one command per tool's argv variant, in table order (ruff → flake8 → pylint → black → isort; mypy → ty → pyright; pytest → tox → nox)
+5. **venv**: any of those tools actually installed in `.venv`, run as `<venv-python> -m <module>`
+
+This tool is focused on **Python** repos, but if your repo has a Justfile or Makefile with the recipes above, your checks can be run even if they are not Python.
+
 ## Skills
 Copy the [Agent Checks MCP ](https://github.com/DavidVujic/agentic-python-tools/blob/main/docs/skills/agent-checks-mcp/SKILL.md) skill to your setup and modify it as you like.
