@@ -82,6 +82,14 @@ def _fake_run(calls: list):
     return run
 
 
+def _failing_run(commands, files=None, _timeout=60.0):
+    """A run that reports every command as failing."""
+    return [
+        {"argv": c["argv"], "returncode": 1, "stdout": "", "stderr": ""}
+        for c in commands
+    ]
+
+
 def _wait_until(condition, timeout: float = 5.0) -> bool:
     """Poll a condition until it holds or the timeout passes."""
     deadline = monotonic() + timeout
@@ -326,3 +334,86 @@ def test_run_batch_cancels_pending_kinds_once_stopped(tmp_path):
         assert entry["ok"] is None
         assert entry["note"] == f"{kind} run cancelled: session stopped"
         assert entry["running"] is False
+
+
+def test_run_batch_carries_files_of_a_failed_run(tmp_path, monkeypatch):
+    _patch_uv_just(monkeypatch)
+    (tmp_path / "uv.lock").touch()
+    _write(tmp_path, "pyproject.toml", '[dependency-groups]\ndev = ["ruff"]\n')
+    _write(tmp_path, "justfile", "lint:\n    uv run ruff check\n")
+    _pkg_project(tmp_path, "test_module.py", "from pkg import module\n")
+    _write(tmp_path, "other.py", "y = 2\n")
+    argvs = _record_argvs(monkeypatch)
+
+    session = _batch_session(tmp_path)
+    session["commands"] = {kind: DETECTORS[kind](tmp_path) for kind in KINDS}
+
+    _run_batch(session, _failing_run, ["pkg/module.py"], _mark_pending(session))
+
+    assert latest(session, "lint")["ok"] is False
+
+    _run_batch(session, run_commands, ["other.py"], _mark_pending(session))
+
+    assert ["uv", "run", "ruff", "check", "other.py", "pkg/module.py"] in argvs
+    assert latest(session, "lint")["ok"] is True
+    assert session["latest"]["lint"]["changed_files"] == ["other.py", "pkg/module.py"]
+
+
+def test_run_batch_carries_files_of_a_passing_kind(tmp_path):
+    _write(tmp_path, "old.py", "x = 1\n")
+    _write(tmp_path, "new.py", "x = 1\n")
+    session = _batch_session(tmp_path)
+
+    session, _ = _run_batch_collecting(session, ["old.py"], ("lint",))
+
+    assert latest(session, "lint")["ok"] is True
+
+    session, calls = _run_batch_collecting(session, ["new.py"], ("lint",))
+
+    assert [files for _, files in calls] == [["new.py", "old.py"]]
+    assert session["latest"]["lint"]["changed_files"] == ["new.py", "old.py"]
+
+
+def test_run_batch_keeps_carrying_files_after_a_passing_run(tmp_path):
+    _write(tmp_path, "first.py", "x = 1\n")
+    _write(tmp_path, "second.py", "x = 1\n")
+    _write(tmp_path, "third.py", "x = 1\n")
+    session = _batch_session(tmp_path)
+
+    _run_batch(session, _failing_run, ["first.py"], ("lint",))
+
+    assert latest(session, "lint")["ok"] is False
+
+    session, calls = _run_batch_collecting(session, ["second.py"], ("lint",))
+
+    assert [files for _, files in calls] == [["second.py", "first.py"]]
+    assert session["latest"]["lint"]["changed_files"] == ["second.py", "first.py"]
+
+    session, calls = _run_batch_collecting(session, ["third.py"], ("lint",))
+
+    assert [files for _, files in calls] == [["third.py", "second.py", "first.py"]]
+    assert session["latest"]["lint"]["changed_files"] == [
+        "third.py",
+        "second.py",
+        "first.py",
+    ]
+
+
+def test_run_batch_carries_failed_test_files_into_affected_tests(tmp_path, monkeypatch):
+    _patch_uv(monkeypatch)
+    _uv_project(tmp_path)
+    _pkg_project(tmp_path, "test_module.py", "from pkg import module\n")
+    _write(tmp_path, "other.py", "y = 2\n")
+    argvs = _record_argvs(monkeypatch)
+
+    session = _batch_session(tmp_path)
+    session["commands"] = {kind: DETECTORS[kind](tmp_path) for kind in KINDS}
+    _run_batch(session, _failing_run, ["pkg/module.py"], _mark_pending(session))
+
+    assert latest(session, "test")["ok"] is False
+
+    _run_batch(session, run_commands, ["other.py"], _mark_pending(session))
+
+    pytest_argvs = [argv for argv in argvs if argv[:3] == ["uv", "run", "pytest"]]
+    assert pytest_argvs == [["uv", "run", "pytest", "test/test_module.py"]]
+    assert session["latest"]["test"]["changed_files"] == ["other.py", "pkg/module.py"]

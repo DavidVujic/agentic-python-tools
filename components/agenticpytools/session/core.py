@@ -177,6 +177,14 @@ def _existing_files(project: str, batch: list[str]) -> list[str] | None:
     return existing or None
 
 
+def _previous_run_files(session: dict, kind: str) -> list[str]:
+    """The files of a kind's latest run, carried into every upcoming batch."""
+    with _LOCK:
+        entry = session["latest"].get(kind)
+
+    return list(entry["changed_files"]) if entry is not None else []
+
+
 def _cmds_for(
     session: dict, kind: str, files: list[str] | None
 ) -> tuple[list[dict], str]:
@@ -197,15 +205,22 @@ def _run_batch(
 ) -> None:
     """Run the pending kinds once, publishing each outcome as it finishes.
 
-    A watcher batch runs on its changed files; a None batch is the initial run.
+    A watcher batch runs on its changed files plus the files of the kind's
+    latest run, so changed_files accumulates across the session's watcher
+    runs; a None batch is the initial run.
     """
-    files = _existing_files(session["project"], batch) if batch else None
     origin = "watcher" if batch else "initial"
 
     def run_kind(kind: str) -> None:
+        changed = (
+            list(dict.fromkeys([*batch, *_previous_run_files(session, kind)]))
+            if batch is not None
+            else []
+        )
+        run_files = _existing_files(session["project"], changed)
         job = {
             "kind": kind,
-            "changed_files": batch or [],
+            "changed_files": changed,
             "origin": origin,
             "scope": "all",
         }
@@ -215,8 +230,8 @@ def _run_batch(
         elif kind == "test" and batch is not None:
             entry = _run_affected_tests(run, session, job)
         else:
-            cmds, scope = _cmds_for(session, kind, files)
-            entry = _run_job(run, cmds, files, {**job, "scope": scope})
+            cmds, scope = _cmds_for(session, kind, run_files)
+            entry = _run_job(run, cmds, run_files, {**job, "scope": scope})
 
         _publish(session, entry)
 

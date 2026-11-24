@@ -114,7 +114,7 @@ For each check, it tries these places in order and stops at the first one that h
 4. **pyproject tools**: tool listed as a dependency or with a config section/marker file; one command per tool's argv variant, in table order (ruff → flake8 → pylint → black → isort; mypy → ty → pyright; pytest → tox → nox)
 5. **venv**: any of those tools actually installed in `.venv`, run as `<venv-python> -m <module>`
 
-The first place that has a command decides the full command, used by the initial and on-demand runs. When it is a recipe without file arguments (`just`, `make`, poe, pixi, or hatch), a secondary file-scoped command is also detected from the deeper places in the ladder, from the first tool that accepts file paths (such as ruff, ty, or pytest). The watcher batches run that file-scoped command with the changed files appended, or the affected tests for the test check.
+The first place that has a command decides the full command, used by the initial and on-demand runs. When it is a recipe without file arguments (`just`, `make`, poe, pixi, or hatch), a secondary file-scoped command is also detected from the deeper places in the ladder, from the first tool that accepts file paths (such as ruff, ty, or pytest). The watcher batches run that file-scoped command with the changed files appended, or the affected tests for the test check; files from the kind's previous run follow the upcoming watcher batches, so the reported changed files cover all files changed so far.
 
 This tool is focused on **Python** repos, but if your repo has a Justfile or Makefile with the recipes above, your checks can be run even if they are not Python.
 
