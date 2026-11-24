@@ -43,7 +43,7 @@ def detect_commands(
         if file_commands:
             break
 
-    return {"all": all_commands, "files": file_commands or _file_scoped(all_commands)}
+    return {"all": all_commands, "files": file_commands}
 
 
 def _decorated(commands: list[dict], path: Path) -> list[dict]:

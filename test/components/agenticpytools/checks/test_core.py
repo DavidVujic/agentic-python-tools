@@ -64,7 +64,7 @@ def test_justfile_all_with_pyproject_pytest_files(tmp_path, monkeypatch):
     ]
 
 
-def test_pyproject_only_filters_all_for_files(tmp_path, monkeypatch):
+def test_pyproject_only_files_scope_matches_all(tmp_path, monkeypatch):
     _patch_which(monkeypatch, {"uv"})
     _uv_project_with_pytest(tmp_path)
 
