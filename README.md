@@ -118,7 +118,5 @@ The first place that has a command decides the full command, used by the initial
 
 Detected commands run with the project as working directory and, when the project has a `.venv`, with that venv's bin directory on `PATH` (so `just lint` / `make lint` recipes resolve tools from the project venv).
 
-This tool is focused on **Python** repos, but if your repo has a Justfile or Makefile with the recipes above, your checks can be run even if they are not Python.
-
 ## Skills
 Copy the [Agent Checks MCP](./docs/skills/agent-checks-mcp/SKILL.md) skill to your setup and modify it as you like.
