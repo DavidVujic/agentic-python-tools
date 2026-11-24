@@ -49,7 +49,7 @@ def start(
             return _SESSIONS[key]
 
         detected = {kind: DETECTORS[kind](path) for kind in KINDS}
-        kinds = tuple(kind for kind in KINDS if detected[kind])
+        kinds = tuple(kind for kind in KINDS if detected[kind]["all"])
         session = {
             "project": str(path),
             "commands": detected,
@@ -85,30 +85,28 @@ def _default_entry(kind: str) -> dict:
         "changed_files": [],
         "ok": None,
         "origin": None,
+        "scope": None,
     }
 
 
-def _latest_entry(
-    kind: str, results: list[dict] | None, files: list[str], origin: str
-) -> dict:
+def _latest_entry(job: dict, results: list[dict] | None) -> dict:
     """One cache entry for a finished run of a command kind."""
     ok = all(r["returncode"] == 0 for r in results) if results is not None else None
 
     return {
-        "kind": kind,
+        "kind": job["kind"],
         "results": results,
         "ran_at": datetime.now(UTC).isoformat(),
-        "changed_files": list(files),
+        "changed_files": list(job["changed_files"]),
         "ok": ok,
-        "origin": origin,
+        "origin": job["origin"],
+        "scope": job["scope"],
     }
 
 
 def _outcome_entry(job: dict, ok: bool | None, note: str) -> dict:
     """Cache entry for a run without results, such as a failed or cancelled one."""
-    entry = _latest_entry(job["kind"], None, job["changed_files"], job["origin"])
-
-    return {**entry, "ok": ok, "note": note}
+    return {**_latest_entry(job, None), "ok": ok, "note": note}
 
 
 def _run_job(
@@ -121,7 +119,7 @@ def _run_job(
         # Any failure must still publish an outcome, so its pending state is released.
         return _outcome_entry(job, False, f"{job['kind']} run failed: {exc}")
 
-    return _latest_entry(job["kind"], results, job["changed_files"], job["origin"])
+    return _latest_entry(job, results)
 
 
 def _is_newer(entry: dict, existing: dict) -> bool:
@@ -140,7 +138,7 @@ def _mark_pending(session: dict) -> tuple[str, ...]:
         if session["stop"].is_set():
             return ()
 
-        kinds = tuple(kind for kind in KINDS if session["commands"][kind])
+        kinds = tuple(kind for kind in KINDS if session["commands"][kind]["all"])
 
         for kind in kinds:
             session["pending"][kind] += 1
@@ -179,6 +177,26 @@ def _existing_files(project: str, batch: list[str]) -> list[str] | None:
     return existing or None
 
 
+def _previous_run_files(session: dict, kind: str) -> list[str]:
+    """The files of a kind's latest run, carried into every upcoming batch."""
+    with _LOCK:
+        entry = session["latest"].get(kind)
+
+    return list(entry["changed_files"]) if entry is not None else []
+
+
+def _cmds_for(
+    session: dict, kind: str, files: list[str] | None
+) -> tuple[list[dict], str]:
+    """The kind's run commands and their scope, preferring the file-scoped ones."""
+    scopes = session["commands"][kind]
+
+    if files is not None and scopes["files"]:
+        return scopes["files"], "files"
+
+    return scopes["all"], "all"
+
+
 def _run_batch(
     session: dict,
     run: Callable[..., list[dict]],
@@ -187,20 +205,33 @@ def _run_batch(
 ) -> None:
     """Run the pending kinds once, publishing each outcome as it finishes.
 
-    A watcher batch runs on its changed files; a None batch is the initial run.
+    A watcher batch runs on its changed files plus the files of the kind's
+    latest run, so changed_files accumulates across the session's watcher
+    runs; a None batch is the initial run.
     """
-    files = _existing_files(session["project"], batch) if batch else None
     origin = "watcher" if batch else "initial"
 
     def run_kind(kind: str) -> None:
-        job = {"kind": kind, "changed_files": batch or [], "origin": origin}
+        changed = (
+            list(dict.fromkeys([*batch, *_previous_run_files(session, kind)]))
+            if batch is not None
+            else []
+        )
+        run_files = _existing_files(session["project"], changed)
+        job = {
+            "kind": kind,
+            "changed_files": changed,
+            "origin": origin,
+            "scope": "all",
+        }
 
         if session["stop"].is_set():
             entry = _outcome_entry(job, None, f"{kind} run cancelled: session stopped")
         elif kind == "test" and batch is not None:
             entry = _run_affected_tests(run, session, job)
         else:
-            entry = _run_job(run, session["commands"][kind], files, job)
+            cmds, scope = _cmds_for(session, kind, run_files)
+            entry = _run_job(run, cmds, run_files, {**job, "scope": scope})
 
         _publish(session, entry)
 
@@ -212,12 +243,20 @@ def _run_affected_tests(
     run: Callable[..., list[dict]], session: dict, job: dict
 ) -> dict:
     """A watcher batch's test entry: only affected tests run, or none at all."""
-    affected = affected_tests(session["project"], job["changed_files"])
+    existing = [
+        f for f in job["changed_files"] if (Path(session["project"]) / f).is_file()
+    ]
+    affected = affected_tests(session["project"], existing) if existing else None
 
     if affected is not None and not affected:
         return _outcome_entry(job, True, "no affected tests")
 
-    return _run_job(run, session["commands"]["test"], affected, job)
+    if affected is None:
+        return _run_job(run, session["commands"]["test"]["all"], None, job)
+
+    cmds, scope = _cmds_for(session, "test", affected)
+
+    return _run_job(run, cmds, affected, {**job, "scope": scope})
 
 
 def latest(session: dict, kind: str = "lint") -> dict:
@@ -270,8 +309,8 @@ def _claim(key: str, session: dict, kind: str) -> tuple[dict | None, bool]:
 
 
 def _detect(path: Path, kind: str) -> list[dict]:
-    """The kind's commands detected for a project."""
-    return DETECTORS.get(kind, lambda p: [])(path)
+    """The kind's all-scope commands detected for a project."""
+    return DETECTORS.get(kind, lambda p: {"all": [], "files": []})(path)["all"]
 
 
 def _run_unclaimed(run: Callable[..., list[dict]], cmds: list[dict], job: dict) -> dict:
@@ -308,9 +347,14 @@ def run_check(
     if served is not None:
         return served
 
-    session_cmds = session["commands"].get(kind) if session else []
+    session_cmds = session["commands"][kind]["all"] if session else []
     cmds = session_cmds or _detect(path, kind)
-    job = {"kind": kind, "changed_files": [], "origin": "on-demand"}
+    job = {
+        "kind": kind,
+        "changed_files": [],
+        "origin": "on-demand",
+        "scope": "all",
+    }
 
     if session is None or not cmds:
         return _run_unclaimed(run, cmds, job)

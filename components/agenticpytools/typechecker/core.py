@@ -7,6 +7,6 @@ from agenticpytools.checks import detect_commands
 from .tools import TYPE_CHECKERS
 
 
-def detect_typecheck_commands(project: Path) -> list[dict]:
-    """Type check commands from the first source that finds any, in ladder order."""
+def detect_typecheck_commands(project: Path) -> dict[str, list[dict]]:
+    """Type check commands in two scopes: the all and the file-scoped ones."""
     return detect_commands(project, TYPE_CHECKERS, ("typecheck", "type-check", "types"))

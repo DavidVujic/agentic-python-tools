@@ -10,6 +10,9 @@ pytestmark = pytest.mark.session
 
 STALE_COMMAND = {"argv": ["ruff", "check"]}
 FRESH_COMMAND = {"argv": ["ruff", "check", "--fresh"]}
+NO_DETECTED = {"all": [], "files": []}
+STALE_DETECTED = {"all": [STALE_COMMAND], "files": []}
+FRESH_DETECTED = {"all": [FRESH_COMMAND], "files": []}
 
 
 def _fake_run(calls: list):
@@ -25,7 +28,7 @@ def _fake_run(calls: list):
 
 
 def _no_commands(project):
-    return []
+    return {"all": [], "files": []}
 
 
 def _detect_in_order(responses: list, detecting: Event, proceed: Event):
@@ -58,7 +61,7 @@ def _untouched(session: dict) -> bool:
 
 
 @pytest.mark.parametrize("replace", [False, True], ids=["stopped", "replaced"])
-@pytest.mark.parametrize("fresh", [[FRESH_COMMAND], []], ids=["fresh", "none"])
+@pytest.mark.parametrize("fresh", [FRESH_DETECTED, NO_DETECTED], ids=["fresh", "none"])
 def test_run_check_stopped_during_detection_redetects_uncached(
     tmp_path, monkeypatch, replace, fresh
 ):
@@ -67,9 +70,9 @@ def test_run_check_stopped_during_detection_redetects_uncached(
 
     old = _start_idle(tmp_path, "s1")
     detecting, proceed = Event(), Event()
-    replacement_detection = [[]] if replace else []
+    replacement_detection = [NO_DETECTED] if replace else []
     detect, pending = _detect_in_order(
-        [[STALE_COMMAND], *replacement_detection, fresh], detecting, proceed
+        [STALE_DETECTED, *replacement_detection, fresh], detecting, proceed
     )
     monkeypatch.setitem(DETECTORS, "lint", detect)
     check_calls: list = []
@@ -93,8 +96,9 @@ def test_run_check_stopped_during_detection_redetects_uncached(
 
         assert pending == []
         assert entry["running"] is False
-        assert entry["origin"] == ("on-demand" if fresh else "none")
-        assert check_calls == ([(fresh, None)] if fresh else [])
+        assert entry["origin"] == ("on-demand" if fresh["all"] else "none")
+        assert entry["scope"] == ("all" if fresh["all"] else None)
+        assert check_calls == ([(fresh["all"], None)] if fresh["all"] else [])
         assert get(tmp_path, "s1") is current
         assert _untouched(old)
         assert current is None or _untouched(current)

@@ -31,6 +31,10 @@ CANNED_TYPECHECK_COMMAND = {"argv": ["ty", "check"]}
 CANNED_TEST_COMMAND = {"argv": ["pytest"]}
 
 
+def _detected(commands: list[dict]) -> dict:
+    return {"all": commands, "files": []}
+
+
 def _patch_which(monkeypatch, found: set[str]) -> None:
     def which(name: str) -> str | None:
         return f"/usr/bin/{name}" if name in found else None
@@ -114,7 +118,7 @@ def test_start_detects_and_runs_once(tmp_path, monkeypatch):
     calls: list = []
     session = _start_and_wait(tmp_path, "s1", _fake_run(calls))
 
-    assert [c["argv"] for c in commands(session)["lint"]] == [
+    assert [c["argv"] for c in commands(session)["lint"]["all"]] == [
         ["uv", "run", "ruff", "check"],
         ["uv", "run", "ruff", "format", "--check"],
     ]
@@ -132,14 +136,16 @@ def test_start_detects_and_runs_all_kinds(tmp_path, monkeypatch):
     calls: list = []
     session = _start_and_wait(tmp_path, "s1", _fake_run(calls))
 
-    assert [c["argv"] for c in commands(session)["lint"]] == [
+    assert [c["argv"] for c in commands(session)["lint"]["all"]] == [
         ["uv", "run", "ruff", "check"],
         ["uv", "run", "ruff", "format", "--check"],
     ]
-    assert [c["argv"] for c in commands(session)["typecheck"]] == [
+    assert [c["argv"] for c in commands(session)["typecheck"]["all"]] == [
         ["uv", "run", "ty", "check"]
     ]
-    assert [c["argv"] for c in commands(session)["test"]] == [["uv", "run", "pytest"]]
+    assert [c["argv"] for c in commands(session)["test"]["all"]] == [
+        ["uv", "run", "pytest"]
+    ]
     assert len(calls) == 3
     assert latest(session, "lint")["origin"] == "initial"
     assert latest(session, "typecheck")["origin"] == "initial"
@@ -325,7 +331,7 @@ def test_empty_project(tmp_path, monkeypatch):
     lint_calls: list = []
 
     assert latest(session)["running"] is False
-    assert commands(session)["lint"] == []
+    assert commands(session)["lint"]["all"] == []
     assert latest(session)["results"] is None
 
     entry = lint(tmp_path, "s1", run=_fake_run(lint_calls))
@@ -414,7 +420,9 @@ def test_stop_empty_session_id_raises(tmp_path):
 
 
 def test_lint_without_session_runs_now(tmp_path, monkeypatch):
-    monkeypatch.setitem(DETECTORS, "lint", lambda project: [CANNED_LINT_COMMAND])
+    monkeypatch.setitem(
+        DETECTORS, "lint", lambda project: _detected([CANNED_LINT_COMMAND])
+    )
     calls: list = []
 
     entry = lint(tmp_path, "s1", run=_fake_run(calls))
@@ -438,7 +446,9 @@ def _on_demand_lint_in_background(tmp_path, monkeypatch):
     """Start a blocking on-demand lint in a thread, once its run has begun."""
     _patch_which(monkeypatch, set())
     session = _start_and_wait(tmp_path, "s1", _fake_run([]))
-    monkeypatch.setitem(DETECTORS, "lint", lambda project: [CANNED_LINT_COMMAND])
+    monkeypatch.setitem(
+        DETECTORS, "lint", lambda project: _detected([CANNED_LINT_COMMAND])
+    )
     entered, release = Event(), Event()
     run = _blocking_run([], entered, release)
     returned: list = []
@@ -512,7 +522,9 @@ def test_lint_without_latest_runs_and_stores(tmp_path, monkeypatch):
     calls: list = []
     session = _start_and_wait(tmp_path, "s1", _fake_run(calls))
 
-    monkeypatch.setitem(DETECTORS, "lint", lambda project: [CANNED_LINT_COMMAND])
+    monkeypatch.setitem(
+        DETECTORS, "lint", lambda project: _detected([CANNED_LINT_COMMAND])
+    )
     lint_calls: list = []
 
     entry = lint(tmp_path, "s1", run=_fake_run(lint_calls))
@@ -555,7 +567,7 @@ def test_run_check_without_latest_runs_and_stores(tmp_path, monkeypatch, kind, c
     calls: list = []
     session = _start_and_wait(tmp_path, "s1", _fake_run(calls))
 
-    monkeypatch.setitem(DETECTORS, kind, lambda project: [command])
+    monkeypatch.setitem(DETECTORS, kind, lambda project: _detected([command]))
     check_calls: list = []
 
     entry = run_check(tmp_path, "s1", kind, run=_fake_run(check_calls))
@@ -564,6 +576,28 @@ def test_run_check_without_latest_runs_and_stores(tmp_path, monkeypatch, kind, c
     assert entry["ok"] is True
     assert check_calls == [([command], None)]
     assert latest(session, kind)["results"] is not None
+
+
+def test_run_check_justfile_project_runs_the_recipe_with_all_scope(
+    tmp_path, monkeypatch
+):
+    _patch_which(monkeypatch, {"uv", "just"})
+    _uv_project_with_ruff_ty_pytest(tmp_path)
+    (tmp_path / "justfile").write_text(
+        "lint:\n    uv run ruff check\n"
+        "\ntypecheck:\n    uv run ty check\n"
+        "\ntest:\n    uv run pytest\n"
+    )
+    calls: list = []
+
+    entry = run_check(tmp_path, "s1", "test", run=_fake_run(calls))
+
+    assert [c["argv"] for c in calls[0][0]] == [["just", "test"]]
+    assert calls[0][1] is None
+    assert entry["origin"] == "on-demand"
+    assert entry["scope"] == "all"
+    assert entry["ok"] is True
+    assert get(tmp_path, "s1") is None
 
 
 @pytest.mark.parametrize("kind", KINDS)
@@ -713,7 +747,9 @@ def test_failed_entry_is_served_running_while_same_kind_rerun_pending(
 def test_on_demand_failure_publishes_outcome(tmp_path, monkeypatch):
     _patch_which(monkeypatch, set())
     session = _start_and_wait(tmp_path, "s1", _fake_run([]))
-    monkeypatch.setitem(DETECTORS, "lint", lambda project: [CANNED_LINT_COMMAND])
+    monkeypatch.setitem(
+        DETECTORS, "lint", lambda project: _detected([CANNED_LINT_COMMAND])
+    )
 
     entry = lint(tmp_path, "s1", run=_failing_run)
 
