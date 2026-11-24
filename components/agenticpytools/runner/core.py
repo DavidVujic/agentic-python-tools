@@ -3,6 +3,8 @@
 import os
 import subprocess
 
+from agenticpytools.environment import is_windows, venv_dir
+
 
 def run_commands(
     commands: list[dict], files: list[str] | None = None, timeout: float = 60.0
@@ -35,7 +37,7 @@ def _run_one(cmd: dict, files: list[str] | None, timeout: float) -> dict:
         proc = subprocess.run(
             argv,
             cwd=cmd.get("cwd"),
-            env=_child_env(),
+            env=_child_env(cmd.get("cwd")),
             capture_output=True,
             check=False,
             text=True,
@@ -63,9 +65,22 @@ STRIPPED_ENV_VARS = frozenset(
 )
 
 
-def _child_env() -> dict:
-    """Environment for child tools: the caller's activated venv must not leak into the target project."""
-    return {k: v for k, v in os.environ.items() if k not in STRIPPED_ENV_VARS}
+def _child_env(project: str | None = None) -> dict:
+    """Environment for child tools: the caller's activated venv must not leak into the target project; a project .venv replaces it."""
+    env = {k: v for k, v in os.environ.items() if k not in STRIPPED_ENV_VARS}
+
+    if project is None:
+        return env
+
+    venv = venv_dir(project)
+
+    if not venv.is_dir():
+        return env
+
+    bin_dir = venv / ("Scripts" if is_windows() else "bin")
+    path = f"{bin_dir}{os.pathsep}{env.get('PATH', os.defpath)}"
+
+    return {**env, "VIRTUAL_ENV": str(venv), "PATH": path}
 
 
 def _result(argv: list[str], returncode: int, stdout: str, stderr: str) -> dict:

@@ -3,9 +3,11 @@
 import json
 import os
 import sys
+from types import SimpleNamespace
 
 import pytest
 from agenticpytools.runner import run_commands
+from agenticpytools.runner.core import _child_env
 
 pytestmark = pytest.mark.runner
 
@@ -65,6 +67,53 @@ def test_child_env_strips_activation_vars(monkeypatch):
     assert env["POETRY_VIRTUALENVS_PATH"] is None
     assert env["UV_PROJECT_ENVIRONMENT"] is None
     assert env["KEEP_ME"] == "1"
+
+
+def test_child_env_uses_project_venv(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIRTUAL_ENV", "/agent/venv")
+    venv = tmp_path / ".venv"
+    (venv / "bin").mkdir(parents=True)
+
+    env = _child_env(str(tmp_path))
+
+    assert env["VIRTUAL_ENV"] == str(venv)
+    assert env["PATH"].startswith(str(venv / "bin"))
+
+
+def _captured_env(monkeypatch, command: dict) -> dict:
+    """The env subprocess.run received for one command."""
+    captured: list[dict] = []
+
+    def fake_run(argv, **kwargs):
+        captured.append(kwargs)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("agenticpytools.runner.core.subprocess.run", fake_run)
+    run_commands([command])
+
+    return captured[0]["env"]
+
+
+def test_run_commands_env_puts_project_venv_bin_on_path(tmp_path, monkeypatch):
+    venv = tmp_path / ".venv"
+    (venv / "bin").mkdir(parents=True)
+
+    env = _captured_env(monkeypatch, _python_command("pass", cwd=str(tmp_path)))
+
+    assert env["VIRTUAL_ENV"] == str(venv)
+    assert env["PATH"].startswith(str(venv / "bin"))
+
+
+def test_run_commands_env_stripped_without_project_venv(tmp_path, monkeypatch):
+    monkeypatch.setenv("VIRTUAL_ENV", "/agent/venv")
+
+    no_cwd = _captured_env(monkeypatch, _python_command("pass"))
+    no_venv = _captured_env(monkeypatch, _python_command("pass", cwd=str(tmp_path)))
+
+    assert "VIRTUAL_ENV" not in no_cwd
+    assert "VIRTUAL_ENV" not in no_venv
+    assert no_cwd.get("PATH") == os.environ.get("PATH")
+    assert no_venv.get("PATH") == os.environ.get("PATH")
 
 
 def test_files_appended_when_tool_takes_files():

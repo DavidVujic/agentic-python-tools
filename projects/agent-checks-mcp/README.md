@@ -44,6 +44,8 @@ For each check, it tries these places in order and stops at the first one that h
 
 The first place that has a command decides the full command, used by the initial and on-demand runs. When it is a recipe without file arguments (`just`, `make`, poe, pixi, or hatch), a secondary file-scoped command is also detected from the deeper places in the ladder, from the first tool that accepts file paths (such as ruff, ty, or pytest). The watcher batches run that file-scoped command with the changed files appended, or the affected tests for the test check; files from the kind's previous run follow the upcoming watcher batches, so the reported changed files cover all files changed so far.
 
+Detected commands run with the project as working directory and, when the project has a `.venv`, with that venv's bin directory on `PATH` (so `just lint` / `make lint` recipes resolve tools from the project venv).
+
 This tool is focused on **Python** repos, but if your repo has a Justfile or Makefile with the recipes above, your checks can be run even if they are not Python.
 
 ## Skills
