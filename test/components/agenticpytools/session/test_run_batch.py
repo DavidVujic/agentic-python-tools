@@ -190,7 +190,7 @@ def test_run_batch_passes_only_existing_files(tmp_path):
     files_seen = [files for _, files in calls]
 
     assert files_seen.count(["kept.py"]) == 2
-    assert files_seen.count(None) == 1
+    assert None not in files_seen
     _assert_changed_files(session, ["gone.py", "kept.py"])
 
 
@@ -417,3 +417,27 @@ def test_run_batch_carries_failed_test_files_into_affected_tests(tmp_path, monke
     pytest_argvs = [argv for argv in argvs if argv[:3] == ["uv", "run", "pytest"]]
     assert pytest_argvs == [["uv", "run", "pytest", "test/test_module.py"]]
     assert session["latest"]["test"]["changed_files"] == ["other.py", "pkg/module.py"]
+
+
+def test_run_batch_ignores_deleted_files_when_mapping_affected_tests(
+    tmp_path, monkeypatch
+):
+    _patch_uv(monkeypatch)
+    _uv_project(tmp_path)
+    _pkg_project(tmp_path, "test_module.py", "from pkg import module\n")
+    argvs = _record_argvs(monkeypatch)
+
+    session = _batch_session(tmp_path)
+    session["commands"] = {kind: DETECTORS[kind](tmp_path) for kind in KINDS}
+
+    _run_batch(session, _failing_run, ["gone.py"], _mark_pending(session))
+
+    assert latest(session, "test")["ok"] is False
+    assert latest(session, "test")["scope"] == "all"
+
+    _run_batch(session, run_commands, ["pkg/module.py"], _mark_pending(session))
+
+    pytest_argvs = [argv for argv in argvs if argv[:3] == ["uv", "run", "pytest"]]
+    assert pytest_argvs == [["uv", "run", "pytest", "test/test_module.py"]]
+    assert session["latest"]["test"]["scope"] == "files"
+    assert session["latest"]["test"]["changed_files"] == ["pkg/module.py", "gone.py"]

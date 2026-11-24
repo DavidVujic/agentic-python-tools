@@ -243,7 +243,10 @@ def _run_affected_tests(
     run: Callable[..., list[dict]], session: dict, job: dict
 ) -> dict:
     """A watcher batch's test entry: only affected tests run, or none at all."""
-    affected = affected_tests(session["project"], job["changed_files"])
+    existing = [
+        f for f in job["changed_files"] if (Path(session["project"]) / f).is_file()
+    ]
+    affected = affected_tests(session["project"], existing) if existing else None
 
     if affected is not None and not affected:
         return _outcome_entry(job, True, "no affected tests")
