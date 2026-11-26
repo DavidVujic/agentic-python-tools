@@ -59,10 +59,10 @@ def imports_of(project: Path, rel_path: str) -> frozenset[str]:
     except (OSError, SyntaxError, ValueError):
         return frozenset()
 
+    package = _package_of(file.parent, root)
+
     return frozenset(
-        module
-        for node in ast.walk(tree)
-        for module in _imported_names(node, _package_of(file.parent, root))
+        module for node in ast.walk(tree) for module in _imported_names(node, package)
     )
 
 
